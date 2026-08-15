@@ -1,0 +1,212 @@
+import Question   from '../models/Question.model.js'
+import Prediction from '../models/Prediction.model.js'
+import { analyseTopics }    from '../utils/predictionEngine.js'
+import { generateAIJSON, generateAIResponse } from '../utils/aiService.js'
+import { asyncHandler, AppError } from '../middleware/error.middleware.js'
+
+// ── Cache duration in milliseconds (7 days) ───────────────────
+const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
+
+// ── GET /api/predictions/:subject?examType=WASSCE ──────────────
+// Returns predictions for one subject.
+// Serves from cache if fresh — runs engine + AI if stale or missing.
+export const getPredictions = asyncHandler(async (req, res) => {
+  const { subject }  = req.params
+  const { examType = 'WASSCE', forceRefresh = false } = req.query
+
+  // 1. Check cache first
+  const cached = await Prediction.findOne({ subject, examType })
+  const isFresh = cached &&
+    (Date.now() - new Date(cached.generatedAt).getTime()) < CACHE_TTL
+
+  if (cached && isFresh && !forceRefresh) {
+    return res.json({
+      success:     true,
+      fromCache:   true,
+      generatedAt: cached.generatedAt,
+      subject,
+      examType,
+      predictions: cached.predictions,
+      totalQuestionsAnalysed: cached.totalQuestionsAnalysed,
+    })
+  }
+
+  // 2. Cache is stale or missing — run the full engine
+  const questions = await Question.find({
+    subject,
+    examType,
+    isActive: true,
+  }).lean()  // .lean() returns plain objects — faster for data processing
+
+  if (questions.length < 5) {
+    throw new AppError(
+      `Not enough questions in the bank for ${subject} to generate predictions. Add more questions first.`,
+      400
+    )
+  }
+
+  // 3. Run all 8 scoring algorithms (pure JS — fast)
+  const scoredTopics = analyseTopics(questions, subject)
+
+  // 4. Take the top 15 topics and enrich with AI reasoning
+  const topTopics = scoredTopics.slice(0, 15)
+  const enriched  = await enrichWithAI(topTopics, subject, examType, questions.length)
+
+  // 5. Save to MongoDB (upsert — replace if exists)
+  const saved = await Prediction.findOneAndUpdate(
+    { subject, examType },
+    {
+      subject,
+      examType,
+      predictions:            enriched,
+      generatedAt:            new Date(),
+      totalQuestionsAnalysed: questions.length,
+      runBy:                  req.user._id,
+    },
+    { upsert: true, new: true }
+  )
+
+  res.json({
+    success:     true,
+    fromCache:   false,
+    generatedAt: saved.generatedAt,
+    subject,
+    examType,
+    predictions: saved.predictions,
+    totalQuestionsAnalysed: questions.length,
+  })
+})
+
+// ── POST /api/predictions/accuracy ────────────────────────────
+// Admin only — log real exam results to build accuracy feedback loop
+export const logAccuracy = asyncHandler(async (req, res) => {
+  const { subject, examType, examYear, actualTopics } = req.body
+
+  const prediction = await Prediction.findOne({ subject, examType })
+  if (!prediction) throw new AppError('No prediction found for this subject', 404)
+
+  // Compare top predicted topics against what actually appeared
+  const predictedTopics = prediction.predictions
+    .filter(p => p.tier === 'hot')
+    .map(p => p.topic)
+
+  const hits = predictedTopics.filter(t =>
+    actualTopics.some(actual =>
+      actual.toLowerCase().includes(t.toLowerCase()) ||
+      t.toLowerCase().includes(actual.toLowerCase())
+    )
+  )
+
+  const accuracyPercent = predictedTopics.length > 0
+    ? Math.round((hits.length / predictedTopics.length) * 100)
+    : 0
+
+  // Push to the accuracy log array
+  prediction.accuracyLog.push({
+    examYear,
+    predictedTopics,
+    actualTopics,
+    accuracyPercent,
+    loggedAt: new Date(),
+  })
+
+  await prediction.save()
+
+  res.json({
+    success: true,
+    message: `Accuracy logged: ${accuracyPercent}% of hot predictions matched`,
+    accuracyPercent,
+    hits,
+  })
+})
+
+// ── GET /api/predictions/history/:subject ─────────────────────
+// Returns the accuracy log for a subject — admin dashboard
+export const getAccuracyHistory = asyncHandler(async (req, res) => {
+  const { subject }  = req.params
+  const { examType = 'WASSCE' } = req.query
+
+  const prediction = await Prediction.findOne({ subject, examType })
+  if (!prediction) throw new AppError('No prediction history found', 404)
+
+  res.json({
+    success:     true,
+    subject,
+    accuracyLog: prediction.accuracyLog,
+  })
+})
+
+// ── AI enrichment (internal — not a route) ────────────────────
+// Sends scored topics to Gemini/Claude and gets back:
+// - human-readable reasoning per topic
+// - examiner style hint per topic
+const enrichWithAI = async (topics, subject, examType, totalQs) => {
+  // Build a compact summary to send to the AI
+  // We don't send the full question data — just the scores
+  const topicSummary = topics.map(t => ({
+    topic:          t.topic,
+    confidence:     t.confidence,
+    tier:           t.tier,
+    yearsAppeared:  t.yearsAppeared,
+    latestYear:     t.latestYear,
+    trendDirection: t.trendDirection === 1  ? 'rising'
+                  : t.trendDirection === -1 ? 'falling' : 'stable',
+    sectionForecast: t.sectionForecast,
+    clusters:       t.clusters,
+    difficultyTrend: t.difficultyTrend,
+  }))
+
+  const systemPrompt = `You are an expert WAEC examiner and educational data analyst 
+specialising in ${examType} ${subject} examinations in Ghana. 
+You interpret statistical topic analysis data and produce clear, 
+examiner-standard reasoning that helps students prioritise their revision.
+Always respond with valid JSON only. No markdown, no explanation outside the JSON.`
+
+  const prompt = `
+I have analysed ${totalQs} past ${examType} ${subject} questions from 2014–${new Date().getFullYear()}.
+Here are the top predicted topics with their statistical scores:
+
+${JSON.stringify(topicSummary, null, 2)}
+
+For each topic, generate:
+1. "aiReasoning" — 2–3 sentences of examiner-standard reasoning explaining WHY this topic 
+   is predicted at this confidence level. Reference the specific data (years appeared, trend, gap).
+   Write as if you are an experienced WAEC tutor speaking directly to a student.
+
+2. "examinerStyleHint" — 1 sentence describing HOW this topic has recently been tested 
+   (question format, phrasing style, application vs theory, etc.)
+
+Return ONLY a JSON array matching this exact structure:
+[
+  {
+    "topic": "exact topic name from input",
+    "aiReasoning": "...",
+    "examinerStyleHint": "..."
+  }
+]`
+
+  try {
+    const aiResults = await generateAIJSON(prompt, systemPrompt)
+
+    // Merge AI output back into the scored topics
+    return topics.map(topic => {
+      const aiData = aiResults.find(r =>
+        r.topic?.toLowerCase() === topic.topic?.toLowerCase()
+      )
+      return {
+        ...topic,
+        aiReasoning:      aiData?.aiReasoning      || 'Analysis pending.',
+        examinerStyleHint: aiData?.examinerStyleHint || 'Review past paper formats.',
+      }
+    })
+  } catch (err) {
+    // If AI call fails, return topics without AI enrichment
+    // Engine scores are still valuable without the AI narrative
+    console.error('[Prediction] AI enrichment failed:', err.message)
+    return topics.map(topic => ({
+      ...topic,
+      aiReasoning:       'AI enrichment unavailable. Scores based on statistical analysis.',
+      examinerStyleHint: 'Review recent past papers for question format.',
+    }))
+  }
+}
