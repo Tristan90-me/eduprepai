@@ -4,7 +4,7 @@ import AIGeneratorPanel  from '../../components/admin/AIGeneratorPanel'
 import PDFExtractorPanel from '../../components/admin/PDFExtractorPanel'
 import { questionAPI }   from '../../api/question.api'
 import PhysicalExamPanel from '../../components/admin/PhysicalExamPanel'
-import { BarChart2, Plus, Cpu, FileSearch, Shield } from 'lucide-react'
+import { BarChart2, Plus, Cpu, FileSearch, Shield, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const SUBJECTS = [
