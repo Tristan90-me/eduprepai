@@ -2,6 +2,7 @@ import Question      from '../models/Question.model.js'
 import MasteryProfile from '../models/MasteryProfile.model.js'
 import Session       from '../models/Session.model.js'
 import User          from '../models/User.model.js'
+  import { checkAndAwardBadges, updateStreak } from '../utils/badge.utils.js'
 import {
   markMCQ,
   markStructured,
@@ -294,12 +295,17 @@ export const saveSession = asyncHandler(async (req, res) => {
     waecGrade:     gradeInfo.grade,
   })
 
+  // Add these two calls before the res.json:
+  await updateStreak(req.user._id)
+  const newBadges = await checkAndAwardBadges(req.user._id)
+
   res.status(201).json({
     success:   true,
     message:   'Session saved',
     sessionId: session._id,
     accuracy,
     grade:     gradeInfo,
+    newBadges,          // ← add this line
   })
 })
 

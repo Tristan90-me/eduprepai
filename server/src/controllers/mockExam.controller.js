@@ -1,6 +1,7 @@
 import MockExam    from '../models/MockExam.model.js'
 import Session     from '../models/Session.model.js'
 import User        from '../models/User.model.js'
+import { checkAndAwardBadges, updateStreak } from '../utils/badge.utils.js'
 import {
   generatePaper,
   markFullPaper,
@@ -206,12 +207,14 @@ export const submitExam = asyncHandler(async (req, res) => {
     },
     lastActive: new Date(),
   })
-
+  await updateStreak(req.user._id)
+  const newBadges = await checkAndAwardBadges(req.user._id)
   res.json({
     success:  true,
     message:  'Exam marked successfully',
     results:  exam.results,
     examId:   exam._id,
+    newBadges,          // ← add this line
   })
 })
 
