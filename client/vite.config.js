@@ -7,7 +7,6 @@ export default defineConfig({
 
   server: {
     port: 5173,
-    // Dev proxy — routes /api calls to local Express server
     proxy: {
       '/api': {
         target:       'http://localhost:5000',
@@ -17,17 +16,23 @@ export default defineConfig({
   },
 
   build: {
-    // Output to dist/ — what Vercel deploys
-    outDir:        'dist',
-    // Warn if any chunk exceeds 1MB
+    outDir: 'dist',
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        // Split vendor libraries into a separate chunk for better caching
-        manualChunks: {
-          vendor:   ['react', 'react-dom', 'react-router-dom'],
-          charts:   ['recharts'],
-          ui:       ['lucide-react'],
+        // manualChunks must be a function, not an object
+        manualChunks: (id) => {
+          if (id.includes('node_modules/react') ||
+              id.includes('node_modules/react-dom') ||
+              id.includes('node_modules/react-router-dom')) {
+            return 'vendor'
+          }
+          if (id.includes('node_modules/recharts')) {
+            return 'charts'
+          }
+          if (id.includes('node_modules/lucide-react')) {
+            return 'ui'
+          }
         },
       },
     },
