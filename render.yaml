@@ -11,7 +11,7 @@ services:
       - key: PORT
         value: 10000
       - key: MONGODB_URI
-        sync: false          # you will enter this manually in Render dashboard
+        sync: false
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRES_IN
@@ -21,6 +21,6 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: CLIENT_URL
-        sync: false          # your Vercel frontend URL
+        sync: false
     healthCheckPath: /api/health
     autoDeploy: true
