@@ -8,12 +8,7 @@ import {
   Eye, Thermometer, Binoculars,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-// ── Constants ──────────────────────────────────────────────────
-const SUBJECTS = [
-  'Mathematics', 'English Language', 'Integrated Science', 'Social Studies',
-  'Physics', 'Chemistry', 'Biology', 'Economics',
-]
+import { getSubjectsForExamType } from '../../constants/subjects'
 
 const TIERS = [
   { key: 'all',  label: 'All',       icon: Eye         },
@@ -58,15 +53,34 @@ const TIER_CARDS = [
 
 export default function PredictionPage() {
   const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
 
-  const [subject,      setSubject]      = useState(user?.subjects?.[0] || 'Mathematics')
+  // ── Exam type ────────────────────────────────────────────────
+  // Students are locked to their own registered exam type — a WASSCE
+  // student cannot browse BECE predictions and vice versa. Admins
+  // manage content for both exam types, so they keep the toggle.
   const [examType,     setExamType]     = useState(user?.examType || 'WASSCE')
+  const [subject,      setSubject]      = useState(
+    user?.subjects?.[0] || getSubjectsForExamType(user?.examType || 'WASSCE')[0]
+  )
   const [predictions,  setPredictions]  = useState([])
   const [loading,      setLoading]      = useState(false)
   const [generatedAt,  setGeneratedAt]  = useState(null)
   const [fromCache,    setFromCache]    = useState(false)
   const [filterTier,   setFilterTier]   = useState('all')
   const [totalQs,      setTotalQs]      = useState(0)
+
+  const subjectOptions = isAdmin
+    ? getSubjectsForExamType(examType)
+    : (user?.subjects?.length > 0 ? user.subjects : getSubjectsForExamType(examType))
+
+  // ── Admin switching exam type — keep subject valid for the list ─
+  useEffect(() => {
+    if (isAdmin && !subjectOptions.includes(subject)) {
+      setSubject(subjectOptions[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examType])
 
   // ── Load predictions whenever subject or examType changes ──
   useEffect(() => {
@@ -132,32 +146,37 @@ export default function PredictionPage() {
                 onChange={e => setSubject(e.target.value)}
                 className="input"
               >
-                {(user?.subjects?.length > 0 ? user.subjects : SUBJECTS).map(s => (
+                {subjectOptions.map(s => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
             </div>
 
-            {/* Exam type toggle */}
+            {/* Exam type — admins can browse either type; students are
+               locked to their own registered exam type */}
             <div>
               <label className="label">Exam type</label>
-              <div className="flex gap-2">
-                {['WASSCE', 'BECE'].map(type => (
-                  <button
-                    key={type}
-                    onClick={() => setExamType(type)}
-                    className={`
-                      px-4 py-2.5 rounded-lg text-sm font-medium border-2 transition-all
-                      ${examType === type
-                        ? 'bg-teal-600 text-white border-teal-600'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
-                      }
-                    `}
-                  >
-                    {type}
-                  </button>
-                ))}
-              </div>
+              {isAdmin ? (
+                <div className="flex gap-2">
+                  {['WASSCE', 'BECE'].map(type => (
+                    <button
+                      key={type}
+                      onClick={() => setExamType(type)}
+                      className={`
+                        px-4 py-2.5 rounded-lg text-sm font-medium border-2 transition-all
+                        ${examType === type
+                          ? 'bg-teal-600 text-white border-teal-600'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+                        }
+                      `}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <span className="badge-teal px-4 py-2.5 text-sm">{examType}</span>
+              )}
             </div>
 
             {/* Admin re-run button */}

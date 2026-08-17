@@ -3,6 +3,7 @@ import Prediction from '../models/Prediction.model.js'
 import { analyseTopics }    from '../utils/predictionEngine.js'
 import { generateAIJSON, generateAIResponse } from '../utils/aiService.js'
 import { asyncHandler, AppError } from '../middleware/error.middleware.js'
+import { resolveExamType } from '../utils/examType.utils.js'
 
 // ── Cache duration in milliseconds (7 days) ───────────────────
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
@@ -10,9 +11,11 @@ const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
 // ── GET /api/predictions/:subject?examType=WASSCE ──────────────
 // Returns predictions for one subject.
 // Serves from cache if fresh — runs engine + AI if stale or missing.
+// Students are locked to their own exam type; admins can request either.
 export const getPredictions = asyncHandler(async (req, res) => {
   const { subject }  = req.params
-  const { examType = 'WASSCE', forceRefresh = false } = req.query
+  const { forceRefresh = false } = req.query
+  const examType = resolveExamType(req, req.query.examType)
 
   // 1. Check cache first
   const cached = await Prediction.findOne({ subject, examType })

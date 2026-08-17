@@ -9,16 +9,7 @@ import {
   CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-// ── Subject lists ──────────────────────────────────────────────
-const SUBJECTS_WASSCE = [
-  'Mathematics', 'English Language', 'Integrated Science', 'Social Studies',
-  'Physics', 'Chemistry', 'Biology', 'Economics', 'Elective Mathematics', 'Geography',
-]
-const SUBJECTS_BECE = [
-  'Mathematics', 'English Language', 'Integrated Science', 'Social Studies',
-  'French', 'Computing', 'Religious & Moral Education', 'Creative Arts and Design', 'Career Technology',
-]
+import { SUBJECTS_WASSCE, SUBJECTS_BECE } from '../../constants/subjects'
 
 // ── Settings tabs ──────────────────────────────────────────────
 const TABS = [

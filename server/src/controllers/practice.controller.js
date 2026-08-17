@@ -12,6 +12,7 @@ import {
   calculateWAECGrade,
 } from '../utils/marking.utils.js'
 import { asyncHandler, AppError } from '../middleware/error.middleware.js'
+import { resolveExamType } from '../utils/examType.utils.js'
 
 // ── GET /api/practice/questions ────────────────────────────────
 // Fetches questions for a practice session.
@@ -21,10 +22,10 @@ export const getPracticeQuestions = asyncHandler(async (req, res) => {
   const {
     subject,
     topic,
-    examType = 'WASSCE',
     type,                    // MCQ, Structured, Essay — optional filter
     limit = 10,
   } = req.query
+  const examType = resolveExamType(req, req.query.examType)
 
   if (!subject) throw new AppError('Subject is required', 400)
 
@@ -95,7 +96,8 @@ export const getPracticeQuestions = asyncHandler(async (req, res) => {
 // Returns all topics for a subject with the student's mastery
 // score for each — used by the topic picker on the practice page.
 export const getTopicsWithMastery = asyncHandler(async (req, res) => {
-  const { subject, examType = 'WASSCE' } = req.query
+  const { subject } = req.query
+  const examType = resolveExamType(req, req.query.examType)
   if (!subject) throw new AppError('Subject is required', 400)
 
   // All distinct topics in question bank for this subject
@@ -266,13 +268,13 @@ export const saveSession = asyncHandler(async (req, res) => {
   const {
     subject,
     topic,
-    examType,
     questions,
     totalMarks,
     availableMarks,
     duration,
     masteryUpdates,
   } = req.body
+  const examType = resolveExamType(req, req.body.examType)
 
   const accuracy = availableMarks > 0
     ? Math.round((totalMarks / availableMarks) * 100)
@@ -285,7 +287,7 @@ export const saveSession = asyncHandler(async (req, res) => {
     sessionType:   'practice',
     subject,
     topic:         topic || 'Mixed',
-    examType:      examType || 'WASSCE',
+    examType,
     questions:     questions || [],
     totalMarks:    totalMarks || 0,
     availableMarks: availableMarks || 0,
@@ -313,7 +315,8 @@ export const saveSession = asyncHandler(async (req, res) => {
 // Returns the student's full mastery profile for a subject.
 // Used by the dashboard analytics and practice topic picker.
 export const getMasteryProfile = asyncHandler(async (req, res) => {
-  const { subject, examType = 'WASSCE' } = req.query
+  const { subject } = req.query
+  const examType = resolveExamType(req, req.query.examType)
   if (!subject) throw new AppError('Subject is required', 400)
 
   const profiles = await MasteryProfile.find({

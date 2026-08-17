@@ -10,12 +10,7 @@ import ExamSectionC         from '../../components/exam/ExamSectionC'
 import ExamResultCard       from '../../components/exam/ExamResultCard'
 import { BookOpen, ChevronRight, Send, AlertTriangle, History } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-// ── Subjects ───────────────────────────────────────────────────
-const SUBJECTS = [
-  'Mathematics', 'English Language', 'Integrated Science',
-  'Social Studies', 'Physics', 'Chemistry', 'Biology', 'Economics',
-]
+import { getSubjectsForExamType } from '../../constants/subjects'
 
 // ── MockExamPage ───────────────────────────────────────────────
 // Four internal screens:
@@ -30,8 +25,10 @@ export default function MockExamPage() {
   const [screen, setScreen] = useState('setup')
 
   // ── Setup ──────────────────────────────────────────────────
-  const [subject,    setSubject]    = useState(user?.subjects?.[0] || 'Mathematics')
-  const [examType,   setExamType]   = useState(user?.examType || 'WASSCE')
+  // Mock exams are locked to the student's registered exam type — a
+  // WASSCE student can only generate WASSCE papers and vice versa.
+  const examType = user?.examType || 'WASSCE'
+  const [subject,    setSubject]    = useState(user?.subjects?.[0] || getSubjectsForExamType(examType)[0])
   const [pastExams,  setPastExams]  = useState([])
   const [generating, setGenerating] = useState(false)
 
@@ -232,7 +229,7 @@ export default function MockExamPage() {
               </h2>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
-                {(user?.subjects?.length > 0 ? user.subjects : SUBJECTS).map(s => (
+                {(user?.subjects?.length > 0 ? user.subjects : getSubjectsForExamType(examType)).map(s => (
                   <button
                     key={s}
                     onClick={() => setSubject(s)}
@@ -247,20 +244,9 @@ export default function MockExamPage() {
                 ))}
               </div>
 
-              <div className="flex gap-2 mb-5">
-                {['WASSCE', 'BECE'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setExamType(t)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
-                      examType === t
-                        ? 'bg-teal-600 text-white border-teal-600'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 mb-5 text-xs text-slate-500">
+                <span className="badge-teal">{examType}</span>
+                Generated for your registered exam type
               </div>
 
               {/* What to expect */}

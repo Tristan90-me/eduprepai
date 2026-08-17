@@ -3,11 +3,7 @@ import { adminAPI } from '../../api/admin.api'
 import QuestionPreviewTable from './QuestionPreviewTable'
 import { Cpu, Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-const SUBJECTS = [
-  'Mathematics', 'English Language', 'Integrated Science', 'Social Studies',
-  'Physics', 'Chemistry', 'Biology', 'Economics',
-]
+import { getSubjectsForExamType } from '../../constants/subjects'
 
 const BLANK_CONFIG = {
   subject: 'Mathematics', examType: 'WASSCE',
@@ -85,7 +81,7 @@ export default function AIGeneratorPanel() {
             <div>
               <label className="label">Subject</label>
               <select name="subject" value={config.subject} onChange={handleChange} className="input">
-                {SUBJECTS.map(s => <option key={s}>{s}</option>)}
+                {getSubjectsForExamType(config.examType).map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
@@ -94,7 +90,13 @@ export default function AIGeneratorPanel() {
                 {['WASSCE', 'BECE'].map(t => (
                   <button
                     key={t} type="button"
-                    onClick={() => setConfig(p => ({ ...p, examType: t }))}
+                    onClick={() => setConfig(p => ({
+                      ...p,
+                      examType: t,
+                      subject: getSubjectsForExamType(t).includes(p.subject)
+                        ? p.subject
+                        : getSubjectsForExamType(t)[0],
+                    }))}
                     className={`flex-1 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
                       config.examType === t
                         ? 'bg-teal-600 text-white border-teal-600'

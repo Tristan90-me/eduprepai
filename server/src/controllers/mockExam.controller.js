@@ -9,12 +9,14 @@ import {
 } from '../utils/mockGenerator.utils.js'
 import { calculateWAECGrade } from '../utils/marking.utils.js'
 import { asyncHandler, AppError } from '../middleware/error.middleware.js'
+import { resolveExamType } from '../utils/examType.utils.js'
 
 // ── POST /api/mock-exams/generate ──────────────────────────────
 // Generates a full WAEC-standard paper for the student.
 // Uses prediction data + mastery profile to weight question selection.
 export const generateMockExam = asyncHandler(async (req, res) => {
-  const { subject, examType = 'WASSCE' } = req.body
+  const { subject } = req.body
+  const examType = resolveExamType(req, req.body.examType)
 
   if (!subject) throw new AppError('Subject is required', 400)
 

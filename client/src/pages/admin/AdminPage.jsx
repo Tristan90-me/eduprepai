@@ -6,11 +6,7 @@ import { questionAPI }   from '../../api/question.api'
 import PhysicalExamPanel from '../../components/admin/PhysicalExamPanel'
 import { BarChart2, Plus, Cpu, FileSearch, Shield, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-const SUBJECTS = [
-  'Mathematics', 'English Language', 'Integrated Science', 'Social Studies',
-  'Physics', 'Chemistry', 'Biology', 'Economics',
-]
+import { getSubjectsForExamType } from '../../constants/subjects'
 
 const BLANK = {
   subject: 'Mathematics', examType: 'WASSCE', year: 2023,
@@ -163,7 +159,7 @@ export default function AdminPage() {
                 <div>
                   <label className="label">Subject</label>
                   <select name="subject" value={form.subject} onChange={handleChange} className="input">
-                    {SUBJECTS.map(s => <option key={s}>{s}</option>)}
+                    {getSubjectsForExamType(form.examType).map(s => <option key={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
@@ -172,7 +168,13 @@ export default function AdminPage() {
                     {['WASSCE', 'BECE'].map(t => (
                       <button
                         key={t} type="button"
-                        onClick={() => setForm(p => ({ ...p, examType: t }))}
+                        onClick={() => setForm(p => ({
+                          ...p,
+                          examType: t,
+                          subject: getSubjectsForExamType(t).includes(p.subject)
+                            ? p.subject
+                            : getSubjectsForExamType(t)[0],
+                        }))}
                         className={`flex-1 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
                           form.examType === t
                             ? 'bg-teal-600 text-white border-teal-600'

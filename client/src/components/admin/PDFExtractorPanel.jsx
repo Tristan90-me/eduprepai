@@ -3,11 +3,7 @@ import { adminAPI } from '../../api/admin.api'
 import QuestionPreviewTable from './QuestionPreviewTable'
 import { FileSearch, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-const SUBJECTS = [
-  'Mathematics', 'English Language', 'Integrated Science', 'Social Studies',
-  'Physics', 'Chemistry', 'Biology', 'Economics',
-]
+import { getSubjectsForExamType } from '../../constants/subjects'
 
 export default function PDFExtractorPanel() {
   const fileRef = useRef(null)
@@ -99,14 +95,21 @@ export default function PDFExtractorPanel() {
                 onChange={e => setMeta(p => ({ ...p, subject: e.target.value }))}
                 className="input"
               >
-                {SUBJECTS.map(s => <option key={s}>{s}</option>)}
+                {getSubjectsForExamType(meta.examType).map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label className="label">Exam type</label>
               <select
                 value={meta.examType}
-                onChange={e => setMeta(p => ({ ...p, examType: e.target.value }))}
+                onChange={e => setMeta(p => {
+                  const nextSubjects = getSubjectsForExamType(e.target.value)
+                  return {
+                    ...p,
+                    examType: e.target.value,
+                    subject: nextSubjects.includes(p.subject) ? p.subject : nextSubjects[0],
+                  }
+                })}
                 className="input"
               >
                 <option>WASSCE</option>
