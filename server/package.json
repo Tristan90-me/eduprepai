@@ -7,7 +7,11 @@
   "scripts": {
   "dev": "nodemon src/index.js",
   "build": "echo 'No build step required for Node.js backend'",
-  "start": "node src/index.js"
+  "start": "node src/index.js",
+  "seed": "node scripts/seedDemo.js", 
+  "seed:more": "node scripts/seedDemo.js --force",
+  "seed:full": "node scripts/seedQuestions.js",
+  "seed:clear": "node scripts/clearQuestions.js"
 },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",

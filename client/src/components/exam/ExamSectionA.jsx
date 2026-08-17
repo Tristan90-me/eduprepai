@@ -1,5 +1,5 @@
 import { CheckCircle2, Circle } from 'lucide-react'
-
+import MathText from '../MathText'
 const LETTERS = ['A', 'B', 'C', 'D']
 
 // ── ExamSectionA ───────────────────────────────────────────────
@@ -53,7 +53,7 @@ export default function ExamSectionA({ questions, answers, onAnswer, isReview = 
                   {idx + 1}
                 </span>
                 <p className="text-sm text-slate-800 leading-relaxed flex-1">
-                  {q.questionText}
+                  <MathText text={q.questionText} />
                 </p>
               </div>
 
@@ -87,7 +87,9 @@ export default function ExamSectionA({ questions, answers, onAnswer, isReview = 
                         <Circle className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
                       )}
                       <span className="font-semibold text-slate-500 w-3 flex-shrink-0">{letter}.</span>
-                      <span className="flex-1">{q.options?.[i]}</span>
+                      <span className="flex-1">
+                        <MathText text={q.options?.[i] || ''} />
+                      </span>
                     </button>
                   )
                 })}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { CheckCircle2, XCircle, Clock, BookOpen, ChevronRight } from 'lucide-react'
 import MasteryBadge from './MasteryBadge'
+import MathText from './MathText'
 
 // ── Option button colours ──────────────────────────────────────
 const OPTION_LETTERS = ['A', 'B', 'C', 'D']
@@ -84,11 +85,8 @@ export default function QuestionCard({
       </div>
 
       {/* ── Question text ──────────────────────────────────── */}
-      <p
-        className="text-slate-800 text-base leading-relaxed mb-6"
-        style={{ fontFamily: 'var(--font-body)' }}
-      >
-        {question.questionText}
+      <p className="text-slate-800 text-base leading-relaxed mb-6">
+        <MathText text={question.questionText} />
       </p>
 
       {/* ── Structured question parts ──────────────────────── */}
@@ -131,7 +129,9 @@ export default function QuestionCard({
                   {letter}
                 </span>
               )}
-              <span className="flex-1">{question.options?.[i]}</span>
+              <span className="flex-1">
+              <MathText text={question.options?.[i] || ''} />
+              </span>
             </button>
           ))}
         </div>
