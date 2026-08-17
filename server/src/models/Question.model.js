@@ -21,8 +21,11 @@ const questionSchema = new mongoose.Schema(
         'Computing',
         'Religious & Moral Education',
         'Creative Arts and Design',
-        'Ghanaian Language',
         'Career Technology',
+        'Asante Twi',
+        'Akuapim Twi',
+        'Ga',
+        'Ewe',
       ],
     },
 

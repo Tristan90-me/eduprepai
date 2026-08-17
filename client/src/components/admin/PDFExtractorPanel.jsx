@@ -3,7 +3,7 @@ import { adminAPI } from '../../api/admin.api'
 import QuestionPreviewTable from './QuestionPreviewTable'
 import { FileSearch, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { getSubjectsForExamType } from '../../constants/subjects'
+import { getSubjectsForExamType, GHANAIAN_LANGUAGES } from '../../constants/subjects'
 
 export default function PDFExtractorPanel() {
   const fileRef = useRef(null)
@@ -95,7 +95,14 @@ export default function PDFExtractorPanel() {
                 onChange={e => setMeta(p => ({ ...p, subject: e.target.value }))}
                 className="input"
               >
-                {getSubjectsForExamType(meta.examType).map(s => <option key={s}>{s}</option>)}
+                {getSubjectsForExamType(meta.examType)
+                  .filter(s => !GHANAIAN_LANGUAGES.includes(s))
+                  .map(s => <option key={s}>{s}</option>)}
+                {meta.examType === 'BECE' && (
+                  <optgroup label="Ghanaian Language">
+                    {GHANAIAN_LANGUAGES.map(s => <option key={s}>{s}</option>)}
+                  </optgroup>
+                )}
               </select>
             </div>
             <div>

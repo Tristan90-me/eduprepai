@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { GraduationCap, User, Mail, Lock, School, ArrowRight, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { SUBJECTS_WASSCE, SUBJECTS_BECE } from '../../constants/subjects'
+import { SUBJECTS_WASSCE, SUBJECTS_BECE, getPickerTiles } from '../../constants/subjects'
 
 export default function RegisterPage() {
   const { register } = useAuth()
@@ -16,8 +16,10 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
   const [step,    setStep]    = useState(1) // 1 = personal details, 2 = exam + subjects
+  const [openGroup, setOpenGroup] = useState(null) // which group tile (e.g. 'Ghanaian Language') is expanded
 
   const subjects = form.examType === 'WASSCE' ? SUBJECTS_WASSCE : SUBJECTS_BECE
+  const tiles     = getPickerTiles(subjects)
 
   const handleChange = (e) => {
     setError('')
@@ -31,6 +33,16 @@ export default function RegisterPage() {
         ? p.subjects.filter(x => x !== s)
         : [...p.subjects, s],
     }))
+  }
+
+  // Group members (e.g. Ghanaian languages) are single-choice — picking
+  // one replaces any other member of the same group already selected.
+  const chooseGroupOption = (groupOptions, choice) => {
+    setForm(p => ({
+      ...p,
+      subjects: [...p.subjects.filter(x => !groupOptions.includes(x)), choice],
+    }))
+    setOpenGroup(null)
   }
 
   const goToStep2 = () => {
@@ -179,7 +191,7 @@ export default function RegisterPage() {
                   {['WASSCE', 'BECE'].map(t => (
                     <button
                       key={t} type="button"
-                      onClick={() => setForm(p => ({ ...p, examType: t, subjects: [] }))}
+                      onClick={() => { setForm(p => ({ ...p, examType: t, subjects: [] })); setOpenGroup(null) }}
                       className={`flex-1 py-3 rounded-xl text-sm font-semibold border-2 transition-all ${
                         form.examType === t
                           ? 'bg-teal-600 text-white border-teal-600 shadow-md'
@@ -200,29 +212,86 @@ export default function RegisterPage() {
                     ({form.subjects.length} selected)
                   </span>
                 </label>
-                <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-                  {subjects.map(s => (
-                    <button
-                      key={s} type="button"
-                      onClick={() => toggleSubject(s)}
-                      className={`text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-all ${
-                        form.subjects.includes(s)
-                          ? 'bg-teal-50 text-teal-700 border-teal-400'
-                          : 'bg-white text-slate-600 border-slate-200 hover:border-teal-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${
-                          form.subjects.includes(s)
-                            ? 'bg-teal-500 border-teal-500'
-                            : 'border-slate-300'
-                        }`}>
-                          {form.subjects.includes(s) && <Check className="w-2 h-2 text-white" />}
-                        </div>
-                        {s}
+                <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
+                  {tiles.map(tile => {
+                    if (tile.type === 'subject') {
+                      const s = tile.label
+                      return (
+                        <button
+                          key={s} type="button"
+                          onClick={() => toggleSubject(s)}
+                          className={`text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-all ${
+                            form.subjects.includes(s)
+                              ? 'bg-teal-50 text-teal-700 border-teal-400'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-teal-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${
+                              form.subjects.includes(s)
+                                ? 'bg-teal-500 border-teal-500'
+                                : 'border-slate-300'
+                            }`}>
+                              {form.subjects.includes(s) && <Check className="w-2 h-2 text-white" />}
+                            </div>
+                            {s}
+                          </div>
+                        </button>
+                      )
+                    }
+
+                    // ── Group tile (e.g. 'Ghanaian Language') — expands
+                    // into a single-choice list of its member subjects.
+                    const selectedOption = tile.options.find(o => form.subjects.includes(o))
+                    const isOpen = openGroup === tile.label
+                    return (
+                      <div key={tile.label} className="col-span-2">
+                        <button
+                          type="button"
+                          onClick={() => setOpenGroup(isOpen ? null : tile.label)}
+                          className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-medium border-2 transition-all ${
+                            selectedOption
+                              ? 'bg-teal-50 text-teal-700 border-teal-400'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-teal-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0 ${
+                                selectedOption
+                                  ? 'bg-teal-500 border-teal-500'
+                                  : 'border-slate-300'
+                              }`}>
+                                {selectedOption && <Check className="w-2 h-2 text-white" />}
+                              </div>
+                              {tile.label}
+                            </div>
+                            <span className="text-slate-400 font-normal">
+                              {selectedOption || 'Choose one ›'}
+                            </span>
+                          </div>
+                        </button>
+
+                        {isOpen && (
+                          <div className="mt-1.5 ml-2 pl-2.5 border-l-2 border-teal-200 space-y-1 animate-fade-in">
+                            {tile.options.map(lang => (
+                              <button
+                                key={lang} type="button"
+                                onClick={() => chooseGroupOption(tile.options, lang)}
+                                className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors ${
+                                  selectedOption === lang
+                                    ? 'bg-teal-100 text-teal-800 font-semibold'
+                                    : 'text-slate-600 hover:bg-slate-50'
+                                }`}
+                              >
+                                {lang}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </button>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 

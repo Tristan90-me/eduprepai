@@ -1,6 +1,64 @@
 // ── Seed data: all WAEC and BECE subjects with full topic lists ─
 // Covers all official subjects for both examinations.
 
+// ── Shared topic structure for the Ghanaian Language subjects ──
+// Asante Twi, Akuapim Twi, Ga, and Ewe BECE papers share the same
+// broad topic categories even though the linguistic content is
+// entirely different per language. This is a starting structure,
+// not authoritative syllabus content — it should be reviewed by a
+// subject specialist for each language before questions are
+// generated against it.
+const ghanaianLanguageTopics = () => ({
+  BECE: {
+    topics: [
+      {
+        topic: 'Comprehension',
+        subtopics: [
+          'Reading and understanding a prose passage',
+          'Answering questions in the target language',
+          'Vocabulary in context',
+          'Identifying the main idea and supporting details',
+        ],
+      },
+      {
+        topic: 'Summary',
+        subtopics: [
+          'Identifying key points in a passage',
+          'Condensing a passage into a short summary',
+          'Using own words appropriately',
+        ],
+      },
+      {
+        topic: 'Grammar and Structure',
+        subtopics: [
+          'Sentence construction',
+          'Parts of speech',
+          'Tense and aspect',
+          'Common grammatical errors',
+        ],
+      },
+      {
+        topic: 'Composition Writing',
+        subtopics: [
+          'Letter writing: formal and informal',
+          'Narrative composition',
+          'Descriptive composition',
+          'Guided composition',
+        ],
+      },
+      {
+        topic: 'Oral Literature and Proverbs',
+        subtopics: [
+          'Folktales and their moral lessons',
+          'Proverbs and their meanings',
+          'Riddles and everyday expressions',
+          'Cultural context and usage',
+        ],
+      },
+    ],
+  },
+})
+
 export const CURRICULUM = {
 
   // ════════════════════════════════════════════════════════════
@@ -1247,6 +1305,17 @@ export const CURRICULUM = {
       ],
     },
   },
+
+  // ════════════════════════════════════════════════════════════
+  // GHANAIAN LANGUAGE (BECE only) — Asante Twi, Akuapim Twi, Ga, Ewe
+  // Each language is its own subject with its own syllabus and past
+  // papers; 'Ghanaian Language' itself is a picker-only grouping and
+  // is never used as a stored subject value.
+  // ════════════════════════════════════════════════════════════
+  'Asante Twi':  ghanaianLanguageTopics(),
+  'Akuapim Twi': ghanaianLanguageTopics(),
+  'Ga':          ghanaianLanguageTopics(),
+  'Ewe':         ghanaianLanguageTopics(),
 }
 
 // ── Year range ─────────────────────────────────────────────────

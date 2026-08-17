@@ -6,7 +6,7 @@ import { questionAPI }   from '../../api/question.api'
 import PhysicalExamPanel from '../../components/admin/PhysicalExamPanel'
 import { BarChart2, Plus, Cpu, FileSearch, Shield, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { getSubjectsForExamType } from '../../constants/subjects'
+import { getSubjectsForExamType, GHANAIAN_LANGUAGES } from '../../constants/subjects'
 
 const BLANK = {
   subject: 'Mathematics', examType: 'WASSCE', year: 2023,
@@ -159,7 +159,14 @@ export default function AdminPage() {
                 <div>
                   <label className="label">Subject</label>
                   <select name="subject" value={form.subject} onChange={handleChange} className="input">
-                    {getSubjectsForExamType(form.examType).map(s => <option key={s}>{s}</option>)}
+                    {getSubjectsForExamType(form.examType)
+                      .filter(s => !GHANAIAN_LANGUAGES.includes(s))
+                      .map(s => <option key={s}>{s}</option>)}
+                    {form.examType === 'BECE' && (
+                      <optgroup label="Ghanaian Language">
+                        {GHANAIAN_LANGUAGES.map(s => <option key={s}>{s}</option>)}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
                 <div>

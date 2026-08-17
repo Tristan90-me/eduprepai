@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { adminAPI } from '../../api/admin.api'
 import QuestionPreviewTable from './QuestionPreviewTable'
-import { Cpu, Sparkles } from 'lucide-react'
+import { Cpu, Sparkles, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { getSubjectsForExamType } from '../../constants/subjects'
+import { getSubjectsForExamType, GHANAIAN_LANGUAGES, AI_RISK_SUBJECTS } from '../../constants/subjects'
 
 const BLANK_CONFIG = {
   subject: 'Mathematics', examType: 'WASSCE',
@@ -81,7 +81,14 @@ export default function AIGeneratorPanel() {
             <div>
               <label className="label">Subject</label>
               <select name="subject" value={config.subject} onChange={handleChange} className="input">
-                {getSubjectsForExamType(config.examType).map(s => <option key={s}>{s}</option>)}
+                {getSubjectsForExamType(config.examType)
+                  .filter(s => !GHANAIAN_LANGUAGES.includes(s))
+                  .map(s => <option key={s}>{s}</option>)}
+                {config.examType === 'BECE' && (
+                  <optgroup label="Ghanaian Language">
+                    {GHANAIAN_LANGUAGES.map(s => <option key={s}>{s}</option>)}
+                  </optgroup>
+                )}
               </select>
             </div>
             <div>
@@ -170,6 +177,19 @@ export default function AIGeneratorPanel() {
             <span className="font-medium">Difficulty guide: </span>
             1 = Foundation · 2 = Standard · 3 = Intermediate · 4 = Advanced · 5 = Examiner level
           </div>
+
+          {/* AI reliability warning for Ghanaian languages */}
+          {AI_RISK_SUBJECTS.includes(config.subject) && (
+            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <p>
+                <span className="font-semibold">Review carefully before saving.</span> AI fluency and
+                orthographic accuracy in {config.subject} is far less reliable than in English —
+                generated text may contain grammatical or spelling errors a non-speaker admin won't
+                catch. You'll be asked to confirm you've checked the language before approving.
+              </p>
+            </div>
+          )}
 
           <button
             onClick={handleGenerate}

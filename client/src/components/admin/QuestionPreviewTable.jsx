@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Trash2, AlertTriangle } from 'lucide-react'
+import { AI_RISK_SUBJECTS } from '../../constants/subjects'
 
 // ── QuestionPreviewTable ───────────────────────────────────────
 // Shows AI-generated or PDF-extracted questions for admin review.
@@ -10,6 +11,15 @@ export default function QuestionPreviewTable({ previews, onApprove, onCancel }) 
   const [questions, setQuestions] = useState(previews)
   const [expanded,  setExpanded]  = useState(null)
   const [saving,    setSaving]    = useState(false)
+  const [languageReviewed, setLanguageReviewed] = useState(false)
+
+  // These subjects need a human fluent in the language to double-check
+  // AI output before it's trusted — see AI_RISK_SUBJECTS.
+  const riskySubjects = [...new Set(
+    questions.filter(q => selected.has(q.previewId) && AI_RISK_SUBJECTS.includes(q.subject))
+             .map(q => q.subject)
+  )]
+  const needsLanguageReview = riskySubjects.length > 0
 
   const toggleSelect = (id) => {
     setSelected(prev => {
@@ -47,6 +57,34 @@ export default function QuestionPreviewTable({ previews, onApprove, onCancel }) 
   return (
     <div className="space-y-4">
 
+      {/* AI reliability warning for Ghanaian languages — must be
+         acknowledged before these questions can be approved */}
+      {needsLanguageReview && (
+        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p>
+              <span className="font-semibold">
+                {riskySubjects.join(', ')} question{riskySubjects.length > 1 ? 's' : ''} selected.
+              </span>{' '}
+              AI fluency and orthographic accuracy in these languages is far less reliable than in
+              English. Have someone fluent check the grammar and spelling before saving.
+            </p>
+            <label className="flex items-center gap-2 mt-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={languageReviewed}
+                onChange={e => setLanguageReviewed(e.target.checked)}
+                className="w-3.5 h-3.5 accent-amber-600"
+              />
+              <span className="font-medium">
+                I've reviewed the {riskySubjects.join(', ')} content for linguistic accuracy
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <label className="flex items-center gap-2 cursor-pointer">
@@ -66,7 +104,7 @@ export default function QuestionPreviewTable({ previews, onApprove, onCancel }) 
           </button>
           <button
             onClick={handleApprove}
-            disabled={!selected.size || saving}
+            disabled={!selected.size || saving || (needsLanguageReview && !languageReviewed)}
             className="btn-primary text-sm"
           >
             {saving
