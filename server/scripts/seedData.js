@@ -1006,7 +1006,7 @@ export const CURRICULUM = {
   // ════════════════════════════════════════════════════════════
   // ICT (BECE only)
   // ════════════════════════════════════════════════════════════
-  'ICT': {
+  'Computing': {
     BECE: {
       topics: [
         {
@@ -1129,7 +1129,7 @@ export const CURRICULUM = {
   // ════════════════════════════════════════════════════════════
   // CREATIVE ARTS (BECE only)
   // ════════════════════════════════════════════════════════════
-  'Creative Arts': {
+  'Creative Arts And Design': {
     BECE: {
       topics: [
         {
@@ -1187,7 +1187,7 @@ export const CURRICULUM = {
   // ════════════════════════════════════════════════════════════
   // PRE-TECHNICAL SKILLS (BECE only)
   // ════════════════════════════════════════════════════════════
-  'Pre-Technical Skills': {
+  'Career Technology': {
     BECE: {
       topics: [
         {

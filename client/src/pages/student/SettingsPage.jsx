@@ -17,7 +17,7 @@ const SUBJECTS_WASSCE = [
 ]
 const SUBJECTS_BECE = [
   'Mathematics', 'English Language', 'Integrated Science', 'Social Studies',
-  'French', 'ICT', 'Religious & Moral Education', 'Creative Arts', 'Pre-Technical Skills',
+  'French', 'Computing', 'Religious & Moral Education', 'Creative Arts And Design', 'Career Technology',
 ]
 
 // ── Settings tabs ──────────────────────────────────────────────
