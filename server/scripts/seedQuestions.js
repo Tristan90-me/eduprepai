@@ -90,7 +90,7 @@ const generateQuestions = async ({
 
 // ── Math formatting instructions ───────────────────────────────
 const NON_MATH_SUBJECTS = ['English Language', 'Social Studies', 'History',
-  'French', 'Religious & Moral Education', 'Creative Arts And Design',
+  'French', 'Religious & Moral Education', 'Creative Arts and Design',
   'Career Technology', 'Computing', 'Economics']
 
 const MATH_NOTE = NON_MATH_SUBJECTS.includes(subject) ? '' : `

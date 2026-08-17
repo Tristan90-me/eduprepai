@@ -1004,7 +1004,7 @@ export const CURRICULUM = {
   },
 
   // ════════════════════════════════════════════════════════════
-  // ICT (BECE only)
+  // COMPUTING (BECE only)
   // ════════════════════════════════════════════════════════════
   'Computing': {
     BECE: {
@@ -1059,8 +1059,8 @@ export const CURRICULUM = {
           subtopics: [
             'Data information and knowledge',
             'Databases and their uses',
-            'ICT in everyday life in Ghana',
-            'Careers in ICT',
+            'Computing in everyday life in Ghana',
+            'Careers in Computing',
           ],
         },
       ],
@@ -1127,9 +1127,9 @@ export const CURRICULUM = {
   },
 
   // ════════════════════════════════════════════════════════════
-  // CREATIVE ARTS (BECE only)
+  // CREATIVE ARTS AND DESIGN (BECE only)
   // ════════════════════════════════════════════════════════════
-  'Creative Arts And Design': {
+  'Creative Arts and Design': {
     BECE: {
       topics: [
         {
@@ -1185,7 +1185,7 @@ export const CURRICULUM = {
   },
 
   // ════════════════════════════════════════════════════════════
-  // PRE-TECHNICAL SKILLS (BECE only)
+  // CAREER TECHNOLOGY (BECE only)
   // ════════════════════════════════════════════════════════════
   'Career Technology': {
     BECE: {

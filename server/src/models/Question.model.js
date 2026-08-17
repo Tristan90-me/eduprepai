@@ -20,7 +20,7 @@ const questionSchema = new mongoose.Schema(
         'French',
         'Computing',
         'Religious & Moral Education',
-        'Creative Arts And Design',
+        'Creative Arts and Design',
         'Ghanaian Language',
         'Career Technology',
       ],
