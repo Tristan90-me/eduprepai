@@ -1,27 +1,32 @@
 import { BarChart, Bar, ResponsiveContainer, Tooltip, Cell } from 'recharts'
 
 // ── TrendSparkline ─────────────────────────────────────────────
-// Receives yearlyFrequency: [{ year: 2015, count: 1 }, ...]
-// Renders as a compact bar chart — green bars = appeared, gray = absent
+// Compact year-on-year bar chart inside each topic card.
+// Coloured bars = appeared that year. Grey = absent.
 export default function TrendSparkline({ data = [], trendDirection }) {
   if (!data.length) return null
 
-  const trendColour = trendDirection === 1  ? '#10B981'   // rising  → green
-                    : trendDirection === -1 ? '#EF4444'   // falling → red
-                    :                        '#6366F1'    // stable  → indigo
+  // Colour matches our teal brand — rising is green, falling is red, stable is teal
+  const barColour =
+    trendDirection === 1  ? '#10B981'  // green — rising
+    : trendDirection === -1 ? '#EF4444' // red — falling
+    : '#0D9488'                          // teal — stable
 
   return (
-    <div className="w-full h-12">
+    <div className="w-full h-10">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
           <Tooltip
+            cursor={false}
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null
               const { year, count } = payload[0].payload
               return (
-                <div className="bg-white border border-gray-200 rounded px-2 py-1 text-xs shadow">
-                  <span className="font-medium">{year}:</span>{' '}
-                  {count > 0 ? `${count} question${count > 1 ? 's' : ''}` : 'not tested'}
+                <div className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs shadow-md">
+                  <span className="font-semibold text-slate-700">{year}:</span>{' '}
+                  <span className="text-slate-500">
+                    {count > 0 ? `${count} question${count > 1 ? 's' : ''}` : 'not tested'}
+                  </span>
                 </div>
               )
             }}
@@ -30,7 +35,7 @@ export default function TrendSparkline({ data = [], trendDirection }) {
             {data.map((entry, i) => (
               <Cell
                 key={i}
-                fill={entry.count > 0 ? trendColour : '#E5E7EB'}
+                fill={entry.count > 0 ? barColour : '#E2E8F0'}
               />
             ))}
           </Bar>
