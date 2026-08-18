@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import TrendSparkline from './TrendSparkline'
+import useCountUp from '../hooks/useCountUp'
 import { TrendingUp, TrendingDown, Minus, BookOpen, ChevronRight, Layers } from 'lucide-react'
 
 // ── Tier configuration — consistent with our teal brand ────────
@@ -38,6 +39,7 @@ export default function TopicCard({ prediction, subject }) {
   const tier     = TIER_CONFIG[prediction.tier] || TIER_CONFIG.watch
   const trend    = TREND_CONFIG[prediction.trendDirection] || TREND_CONFIG[0]
   const TrendIcon = trend.icon
+  const confidence = useCountUp(prediction.confidence)
 
   const handlePractice = () => {
     navigate(
@@ -78,13 +80,13 @@ export default function TopicCard({ prediction, subject }) {
         <div className="flex justify-between items-center mb-1.5">
           <span className="text-xs text-slate-400 font-medium">Confidence</span>
           <span className="text-sm font-bold text-slate-800 tabular-nums">
-            {prediction.confidence}%
+            {confidence}%
           </span>
         </div>
         <div className="w-full bg-slate-100 rounded-full h-2">
           <div
             className={`h-2 rounded-full transition-all duration-700 ${tier.bar}`}
-            style={{ width: `${prediction.confidence}%` }}
+            style={{ width: `${confidence}%` }}
           />
         </div>
       </div>
@@ -108,6 +110,8 @@ export default function TopicCard({ prediction, subject }) {
         </span>
         <span className="text-slate-300">·</span>
         <span className="text-slate-500">Last seen: <span className="font-medium text-slate-700">{prediction.latestYear}</span></span>
+        <span className="text-slate-300">·</span>
+        <span className="text-slate-500">Appeared <span className="font-medium text-slate-700">{prediction.yearsAppeared?.length || 0}/10</span> yrs</span>
         {prediction.sectionForecast && (
           <>
             <span className="text-slate-300">·</span>

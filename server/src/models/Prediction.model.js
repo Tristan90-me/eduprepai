@@ -10,8 +10,11 @@ const topicPredictionSchema = new mongoose.Schema({
     year:  Number,
     count: Number,
   }],
+  // questionType, not "type" — a field literally named `type` on a
+  // nested object is misparsed by Mongoose as that object's own
+  // SchemaType declaration rather than a sibling data field.
   sectionForecast: {
-    type:          String,
+    questionType:  String,
     section:       String,
     expectedMarks: Number,
     confidence:    Number,

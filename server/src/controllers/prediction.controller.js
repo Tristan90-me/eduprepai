@@ -22,19 +22,40 @@ export const getPredictions = asyncHandler(async (req, res) => {
   const isFresh = cached &&
     (Date.now() - new Date(cached.generatedAt).getTime()) < CACHE_TTL
 
-  if (cached && isFresh && !forceRefresh) {
+  // Never auto-generate — that costs a real AI call. Without an explicit
+  // forceRefresh, serve whatever's cached (fresh or stale) or tell the
+  // client nothing has been generated yet so it can offer that as an
+  // explicit action instead.
+  if (!forceRefresh) {
+    if (cached) {
+      return res.json({
+        success:        true,
+        fromCache:      true,
+        stale:          !isFresh,
+        generatedAt:    cached.generatedAt,
+        cacheExpiresAt: new Date(new Date(cached.generatedAt).getTime() + CACHE_TTL),
+        subject,
+        examType,
+        predictions: cached.predictions,
+        totalQuestionsAnalysed: cached.totalQuestionsAnalysed,
+      })
+    }
+
     return res.json({
-      success:     true,
-      fromCache:   true,
-      generatedAt: cached.generatedAt,
+      success:        true,
+      fromCache:      false,
+      notGenerated:   true,
+      generatedAt:    null,
+      cacheExpiresAt: null,
       subject,
       examType,
-      predictions: cached.predictions,
-      totalQuestionsAnalysed: cached.totalQuestionsAnalysed,
+      predictions:    [],
+      totalQuestionsAnalysed: 0,
     })
   }
 
-  // 2. Cache is stale or missing — run the full engine
+  // 2. forceRefresh === true — explicit request, always (re)generate
+  //    regardless of cache freshness. Run the full engine.
   const questions = await Question.find({
     subject,
     examType,
@@ -70,9 +91,11 @@ export const getPredictions = asyncHandler(async (req, res) => {
   )
 
   res.json({
-    success:     true,
-    fromCache:   false,
-    generatedAt: saved.generatedAt,
+    success:        true,
+    fromCache:      false,
+    stale:          false,
+    generatedAt:    saved.generatedAt,
+    cacheExpiresAt: new Date(saved.generatedAt.getTime() + CACHE_TTL),
     subject,
     examType,
     predictions: saved.predictions,

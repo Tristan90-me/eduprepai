@@ -130,7 +130,7 @@ const scoreOneTopic = (topic, questions, subject, allTopics) => {
     gapScore:        Math.round(gapScore       * 100),
     trendDirection,              // -1, 0, or 1
     yearlyFrequency,             // array of { year, count } for sparkline
-    sectionForecast,             // { section, type, marks }
+    sectionForecast,             // { questionType, section, expectedMarks, confidence }
     clusters,                    // array of related topic names
     difficultyTrend,             // 'increasing', 'stable', 'decreasing'
     yearsAppeared:   years,
@@ -177,7 +177,10 @@ const predictSection = (questions) => {
   const marksMap = { A: 1, B: 10, C: 20 }
 
   return {
-    type,
+    // Named questionType, not type — a field literally named `type`
+    // inside a Mongoose nested-object schema gets misparsed as the
+    // field's own SchemaType declaration instead of nested data.
+    questionType:  type,
     section:       section || 'A',
     expectedMarks: marksMap[section] || 1,
     confidence:    Math.round((mostCommon[1] / questions.length) * 100),
