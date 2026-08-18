@@ -2,8 +2,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 
-import LoginPage       from './pages/auth/LoginPage'
-import RegisterPage    from './pages/auth/RegisterPage'
+import LoginPage         from './pages/auth/LoginPage'
+import RegisterPage      from './pages/auth/RegisterPage'
+import AdminLoginPage    from './pages/auth/AdminLoginPage'
+import AdminRegisterPage from './pages/auth/AdminRegisterPage'
 import DashboardPage   from './pages/student/DashboardPage'
 import PracticePage    from './pages/student/PracticePage'
 import PredictionPage  from './pages/student/PredictionPage'
@@ -54,6 +56,10 @@ const AppRoutes = () => (
     {/* Public — redirect to dashboard if already logged in */}
     <Route path="/login"       element={<PublicRoute><LoginPage /></PublicRoute>} />
     <Route path="/register"    element={<PublicRoute><RegisterPage /></PublicRoute>} />
+
+    {/* Admin — separate entry point, never linked from student pages */}
+    <Route path="/admin/login"    element={<PublicRoute><AdminLoginPage /></PublicRoute>} />
+    <Route path="/admin/register" element={<PublicRoute><AdminRegisterPage /></PublicRoute>} />
 
     {/* Student — require login */}
     <Route path="/dashboard"   element={<PrivateRoute><DashboardPage /></PrivateRoute>} />

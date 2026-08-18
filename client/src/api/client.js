@@ -24,9 +24,17 @@ api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     if (error.response?.status === 401) {
+      // Send an admin whose session just expired back to the admin
+      // login, not the student one — read role before clearing it.
+      let redirectTo = '/login'
+      try {
+        const stored = localStorage.getItem('eduprepai_user')
+        if (stored && JSON.parse(stored).role === 'admin') redirectTo = '/admin/login'
+      } catch { /* ignore malformed stored user */ }
+
       localStorage.removeItem('eduprepai_token')
       localStorage.removeItem('eduprepai_user')
-      window.location.href = '/login'
+      window.location.href = redirectTo
     }
     const message = error.response?.data?.message || 'Something went wrong'
     return Promise.reject(new Error(message))

@@ -11,7 +11,9 @@
   "seed": "node scripts/seedDemo.js", 
   "seed:more": "node scripts/seedDemo.js --force",
   "seed:full": "node scripts/seedQuestions.js",
-  "seed:clear": "node scripts/clearQuestions.js"
+  "seed:clear": "node scripts/clearQuestions.js",
+  "admin:create": "node scripts/manageAdmin.js create",
+  "admin:promote": "node scripts/manageAdmin.js promote"
 },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",

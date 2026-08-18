@@ -30,8 +30,9 @@ export default function Sidebar({ mobileOpen, onClose }) {
   const navItems          = user?.role === 'admin' ? ADMIN_NAV : STUDENT_NAV
 
   const handleLogout = () => {
+    const wasAdmin = user?.role === 'admin'
     logout()
-    navigate('/login')
+    navigate(wasAdmin ? '/admin/login' : '/login')
   }
 
   const accuracy = user?.totalQuestionsAnswered > 0

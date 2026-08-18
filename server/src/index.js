@@ -6,6 +6,7 @@ import dotenv        from 'dotenv'
 import rateLimit     from 'express-rate-limit'
 
 import { connectDB } from './config/database.js'
+import { bootstrapAdmin } from './utils/bootstrapAdmin.js'
 
 // ── Route imports ──────────────────────────────────────────────
 import authRoutes       from './routes/auth.routes.js'
@@ -78,6 +79,7 @@ app.use(errorHandler)
 // ── Start server ───────────────────────────────────────────────
 const start = async () => {
   await connectDB()
+  await bootstrapAdmin()
   app.listen(PORT, () => {
     console.log(`\n🚀 EduPrepAI server running on http://localhost:${PORT}`)
     console.log(`📚 Environment: ${process.env.NODE_ENV}`)

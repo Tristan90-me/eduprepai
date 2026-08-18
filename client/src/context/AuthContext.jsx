@@ -35,6 +35,24 @@ export const AuthProvider = ({ children }) => {
     return data
   }
 
+  // ── Admin login ────────────────────────────────────────────
+  const adminLogin = async (credentials) => {
+    const data = await api.post('/auth/admin-login', credentials)
+    localStorage.setItem('eduprepai_token', data.token)
+    localStorage.setItem('eduprepai_user',  JSON.stringify(data.user))
+    setUser(data.user)
+    return data
+  }
+
+  // ── Admin registration (invite-code gated) ──────────────────
+  const adminRegister = async (formData) => {
+    const data = await api.post('/auth/admin-register', formData)
+    localStorage.setItem('eduprepai_token', data.token)
+    localStorage.setItem('eduprepai_user',  JSON.stringify(data.user))
+    setUser(data.user)
+    return data
+  }
+
   // ── Logout ─────────────────────────────────────────────────
   const logout = () => {
     localStorage.removeItem('eduprepai_token')
@@ -50,7 +68,7 @@ export const AuthProvider = ({ children }) => {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, register, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, register, login, adminLogin, adminRegister, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   )
