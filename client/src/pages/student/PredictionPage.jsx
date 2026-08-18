@@ -268,9 +268,14 @@ export default function PredictionPage() {
               )}
             </div>
 
-            {/* Generate / re-run action — always visible to admins;
-               shown to students only when there's something to act on */}
-            {(isAdmin || notGenerated || stale) && (
+            {/* Generate / re-run action — only shown once there's
+               something to act on. Before that, the single CTA in the
+               "not generated yet" empty state below is the only way
+               to trigger analysis, so it's never ambiguous whether
+               something has already run. Admins can always re-run
+               once results exist (fresh or stale); students only see
+               this when the cache is missing or stale. */}
+            {(isAdmin ? !notGenerated : (notGenerated || stale)) && (
               <button
                 onClick={handleRefresh}
                 disabled={loading}
