@@ -4,9 +4,15 @@ import { analyseTopics }    from '../utils/predictionEngine.js'
 import { generateAIJSON, generateAIResponse } from '../utils/aiService.js'
 import { asyncHandler, AppError } from '../middleware/error.middleware.js'
 import { resolveExamType } from '../utils/examType.utils.js'
+import { BECE_CURRICULUM_REFORM_YEAR } from '../data/beceCurriculum.js'
 
 // ── Cache duration in milliseconds (7 days) ───────────────────
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
+
+// Same threshold predictionEngine.js uses to decide how much weight
+// the real syllabus signal should carry — reused here to tell the
+// client honestly when a BECE prediction rests on a thin sample.
+const MATURE_YEARS = 5
 
 // ── GET /api/predictions/:subject?examType=WASSCE ──────────────
 // Returns predictions for one subject.
@@ -38,6 +44,7 @@ export const getPredictions = asyncHandler(async (req, res) => {
         examType,
         predictions: cached.predictions,
         totalQuestionsAnalysed: cached.totalQuestionsAnalysed,
+        dataMaturity: cached.dataMaturity,
       })
     }
 
@@ -51,30 +58,51 @@ export const getPredictions = asyncHandler(async (req, res) => {
       examType,
       predictions:    [],
       totalQuestionsAnalysed: 0,
+      dataMaturity:   null,
     })
   }
 
   // 2. forceRefresh === true — explicit request, always (re)generate
   //    regardless of cache freshness. Run the full engine.
-  const questions = await Question.find({
-    subject,
-    examType,
-    isActive: true,
-  }).lean()  // .lean() returns plain objects — faster for data processing
+  // Only real historical exam questions count as prediction evidence —
+  // admin-added practice/supplementary content (AI-generated, or
+  // explicitly marked as such) is fully usable for practice/mock exams
+  // but must never blend into the statistical signals.
+  const questionFilter = { subject, examType, isActive: true, questionSource: 'pastPaper' }
+
+  // BECE is examined against a new NaCCA curriculum from 2024 onward —
+  // pre-reform past questions test a retired syllabus and must never be
+  // blended into the statistical signals, so they're excluded here
+  // rather than silently scored alongside current-curriculum questions.
+  if (examType === 'BECE') {
+    questionFilter.year = { $gte: BECE_CURRICULUM_REFORM_YEAR }
+  }
+
+  const questions = await Question.find(questionFilter).lean()  // .lean() returns plain objects — faster for data processing
 
   if (questions.length < 5) {
     throw new AppError(
-      `Not enough questions in the bank for ${subject} to generate predictions. Add more questions first.`,
+      examType === 'BECE'
+        ? `Not enough BECE past questions from the current curriculum (${BECE_CURRICULUM_REFORM_YEAR}+) for ${subject} to generate predictions. Pre-reform papers are excluded — add more recent past questions first.`
+        : `Not enough questions in the bank for ${subject} to generate predictions. Add more questions first.`,
       400
     )
   }
 
+  const distinctYears = [...new Set(questions.map(q => q.year))]
+  const dataMaturity = {
+    yearsAvailable: distinctYears.length,
+    isThinData:     examType === 'BECE' && distinctYears.length < MATURE_YEARS,
+  }
+
   // 3. Run all 8 scoring algorithms (pure JS — fast)
-  const scoredTopics = analyseTopics(questions, subject)
+  const scoredTopics = analyseTopics(questions, subject, examType)
 
   // 4. Take the top 15 topics and enrich with AI reasoning
   const topTopics = scoredTopics.slice(0, 15)
-  const enriched  = await enrichWithAI(topTopics, subject, examType, questions.length)
+  const enriched  = await enrichWithAI(
+    topTopics, subject, examType, questions.length, distinctYears, dataMaturity.isThinData
+  )
 
   // 5. Save to MongoDB (upsert — replace if exists)
   const saved = await Prediction.findOneAndUpdate(
@@ -85,6 +113,7 @@ export const getPredictions = asyncHandler(async (req, res) => {
       predictions:            enriched,
       generatedAt:            new Date(),
       totalQuestionsAnalysed: questions.length,
+      dataMaturity,
       runBy:                  req.user._id,
     },
     { upsert: true, new: true }
@@ -100,6 +129,7 @@ export const getPredictions = asyncHandler(async (req, res) => {
     examType,
     predictions: saved.predictions,
     totalQuestionsAnalysed: questions.length,
+    dataMaturity,
   })
 })
 
@@ -166,7 +196,7 @@ export const getAccuracyHistory = asyncHandler(async (req, res) => {
 // Sends scored topics to Gemini/Claude and gets back:
 // - human-readable reasoning per topic
 // - examiner style hint per topic
-const enrichWithAI = async (topics, subject, examType, totalQs) => {
+const enrichWithAI = async (topics, subject, examType, totalQs, distinctYears = [], isThinData = false) => {
   // Build a compact summary to send to the AI
   // We don't send the full question data — just the scores
   const topicSummary = topics.map(t => ({
@@ -188,9 +218,17 @@ You interpret statistical topic analysis data and produce clear,
 examiner-standard reasoning that helps students prioritise their revision.
 Always respond with valid JSON only. No markdown, no explanation outside the JSON.`
 
+  const yearSpan = distinctYears.length > 0
+    ? `${Math.min(...distinctYears)}–${Math.max(...distinctYears)}`
+    : `2014–${new Date().getFullYear()}`
+
+  const thinDataNote = isThinData
+    ? `\nNote: only ${distinctYears.length} year(s) of past questions exist under the current curriculum. Ground your reasoning primarily in what the topic covers in the syllabus rather than overstating confidence from a short history — it's fine to say a topic is a priority because it's a core part of the curriculum, even without years of repeat appearances.\n`
+    : ''
+
   const prompt = `
-I have analysed ${totalQs} past ${examType} ${subject} questions from 2014–${new Date().getFullYear()}.
-Here are the top predicted topics with their statistical scores:
+I have analysed ${totalQs} past ${examType} ${subject} questions from ${yearSpan}.
+${thinDataNote}Here are the top predicted topics with their statistical scores:
 
 ${JSON.stringify(topicSummary, null, 2)}
 

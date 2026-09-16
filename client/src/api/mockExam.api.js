@@ -19,6 +19,9 @@ export const mockExamAPI = {
   // Submit entire paper for marking
   submit:     (id, data)          => api.post(`/mock-exams/${id}/submit`, data),
 
+  // Request an AI explanation for a marked question (cached server-side)
+  explain:    (id, data)          => api.post(`/mock-exams/${id}/explain`, data),
+
   // Admin
   allResults: (params)            => api.get('/mock-exams/admin/all-results', { params }),
 }

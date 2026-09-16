@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams }  from 'react-router-dom'
 import { useAuth }          from '../../context/AuthContext'
+import { useNotifications } from '../../context/NotificationContext'
 import { practiceAPI }      from '../../api/practice.api'
 import AppShell             from '../../components/layout/AppShell'
 import QuestionCard         from '../../components/QuestionCard'
 import ExplanationPanel     from '../../components/ExplanationPanel'
 import SessionSummary       from '../../components/SessionSummary'
 import MasteryBadge         from '../../components/MasteryBadge'
-import { calculateWAECGrade } from '../../utils/gradeUtils'
+import StarRating           from '../../components/StarRating'
+import { calculateGrade } from '../../utils/gradeUtils'
 import {
   BookOpen, ChevronRight, Shuffle,
-  Target, X, Settings,
+  Target, X, Settings, Lock, RotateCcw, Map, List,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getSubjectsForExamType } from '../../constants/subjects'
@@ -20,6 +23,15 @@ import { getSubjectsForExamType } from '../../constants/subjects'
 // 'done'    → session complete, summary shown
 export default function PracticePage() {
   const { user } = useAuth()
+  const { addBadgeNotifications } = useNotifications()
+
+  // ── Deep-link from the ⌘K command palette ───────────────────
+  // /practice?subject=X&topic=Y&autostart=1 jumps straight into a
+  // session instead of landing on the setup screen.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlSubject      = searchParams.get('subject')
+  const urlTopic        = searchParams.get('topic')
+  const shouldAutostart = searchParams.get('autostart') === '1'
 
   // ── Screen state ───────────────────────────────────────────
   const [screen, setScreen] = useState('setup')
@@ -28,13 +40,21 @@ export default function PracticePage() {
   // examType is locked to the student's registered exam type — a
   // WASSCE student never sees or can request BECE content and vice versa.
   const examType = user?.examType || 'WASSCE'
-  const [subject,   setSubject]   = useState(user?.subjects?.[0] || getSubjectsForExamType(examType)[0])
-  const [topic,     setTopic]     = useState('')
+  const [subject,   setSubject]   = useState(urlSubject || user?.subjects?.[0] || getSubjectsForExamType(examType)[0])
+  const [topic,     setTopic]     = useState(urlTopic || '')
   const [qType,     setQType]     = useState('MCQ')
   const [qCount,    setQCount]    = useState(10)
   const [timed,     setTimed]     = useState(false)
   const [topics,    setTopics]    = useState([])
   const [topicsLoading, setTopicsLoading] = useState(false)
+
+  // ── Session Path (guided, mastery-gated progression) ────────
+  // 'path' is the default, recommended route; 'free' is today's
+  // unrestricted topic picker, kept exactly as-is — a student
+  // chasing a specific weak topic must never be blocked.
+  const [viewMode,     setViewMode]     = useState('path')
+  const [sessionPath,  setSessionPath]  = useState([])
+  const [pathLoading,  setPathLoading]  = useState(false)
 
   // ── Session state ──────────────────────────────────────────
   const [questions,    setQuestions]    = useState([])
@@ -51,14 +71,22 @@ export default function PracticePage() {
   const timerRef = useRef(null)
 
   // ── Load topics when subject or exam type changes ──────────
+  // Skips clearing `topic` on the very first run when a topic
+  // arrived via the command palette deep link (setup above).
+  const skipTopicResetRef = useRef(!!urlTopic)
   useEffect(() => {
     const loadTopics = async () => {
       setTopicsLoading(true)
-      setTopic('')
+      if (skipTopicResetRef.current) {
+        skipTopicResetRef.current = false
+      } else {
+        setTopic('')
+      }
       try {
         const data = await practiceAPI.getTopics({ subject, examType })
         setTopics(data.topics || [])
-      } catch {
+      } catch (err) {
+        toast.error(err.message)
         setTopics([])
       } finally {
         setTopicsLoading(false)
@@ -66,6 +94,24 @@ export default function PracticePage() {
     }
     loadTopics()
   }, [subject, examType])
+
+  // ── Load the Session Path when in guided mode ───────────────
+  useEffect(() => {
+    if (viewMode !== 'path') return
+    const loadPath = async () => {
+      setPathLoading(true)
+      try {
+        const data = await practiceAPI.getSessionPath({ subject, examType })
+        setSessionPath(data.sessions || [])
+      } catch (err) {
+        toast.error(err.message)
+        setSessionPath([])
+      } finally {
+        setPathLoading(false)
+      }
+    }
+    loadPath()
+  }, [subject, examType, viewMode])
 
   // ── Start a session ────────────────────────────────────────
   const handleStart = async () => {
@@ -101,6 +147,17 @@ export default function PracticePage() {
       toast.error(err.message)
     }
   }
+
+  // ── Autostart from the command palette deep link ────────────
+  // Runs once on mount only — clears the URL params immediately so
+  // a refresh or back-navigation doesn't relaunch the session.
+  useEffect(() => {
+    if (shouldAutostart) {
+      setSearchParams({}, { replace: true })
+      handleStart()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Handle answer submission ───────────────────────────────
   const handleSubmit = useCallback(async (answer) => {
@@ -201,7 +258,7 @@ export default function PracticePage() {
       ? Math.round((totalMarks / availableMarks) * 100) : 0
 
     try {
-      await practiceAPI.saveSession({
+      const data = await practiceAPI.saveSession({
         subject, topic, examType,
         questions:     results,
         totalMarks,
@@ -209,6 +266,7 @@ export default function PracticePage() {
         duration,
         masteryUpdates,
       })
+      addBadgeNotifications(data.newBadges)
     } catch {
       // Non-blocking — session still shows summary
     }
@@ -284,13 +342,100 @@ export default function PracticePage() {
 
             {/* Topic picker with mastery indicators */}
             <div className="card">
-              <h2 className="section-title flex items-center gap-2">
-                <Target className="w-4 h-4 text-teal-600" />
-                Choose a topic
-                <span className="text-slate-400 font-normal text-sm ml-1">(optional — leave blank for mixed)</span>
-              </h2>
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <h2 className="section-title flex items-center gap-2 mb-0">
+                  <Target className="w-4 h-4 text-teal-600" />
+                  Choose a topic
+                </h2>
+                <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('path')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      viewMode === 'path' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <Map className="w-3.5 h-3.5" /> Guided Path
+                  </button>
+                  <button
+                    onClick={() => setViewMode('free')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                      viewMode === 'free' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <List className="w-3.5 h-3.5" /> Free Practice
+                  </button>
+                </div>
+              </div>
 
-              {topicsLoading ? (
+              {viewMode === 'path' ? (
+                <>
+                  <p className="text-xs text-slate-400 mb-3">
+                    Sessions follow the syllabus order — reach Competent on one to unlock the next.
+                    You can still jump ahead any time; nothing here is locked for real.
+                  </p>
+                  {pathLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
+                      <span className="spinner text-teal-500" /> Loading session path…
+                    </div>
+                  ) : sessionPath.length === 0 ? (
+                    <p className="text-sm text-slate-400 py-4 text-center">No topics available yet for this subject.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                      {sessionPath.map(s => {
+                        const hasContent = s.questionCount > 0
+                        return (
+                          <button
+                            key={s.topic}
+                            disabled={!hasContent}
+                            onClick={() => hasContent && setTopic(s.topic)}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border-2 text-sm text-left transition-all ${
+                              !hasContent
+                                ? 'bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed'
+                                : topic === s.topic
+                                ? 'bg-teal-50 border-teal-400 text-teal-800'
+                                : s.unlocked
+                                ? 'bg-white border-slate-200 text-slate-600 hover:border-teal-200'
+                                : 'bg-slate-50 border-slate-100 text-slate-400'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                                !hasContent
+                                  ? 'bg-slate-100 text-slate-300'
+                                  : s.unlocked ? 'bg-teal-100 text-teal-700' : 'bg-slate-200 text-slate-400'
+                              }`}>
+                                {hasContent && s.unlocked ? s.sessionNumber : <Lock className="w-3 h-3" />}
+                              </span>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium truncate">Session {s.sessionNumber}: {s.topic}</span>
+                                  {hasContent && s.reviewDue && (
+                                    <span className="badge-amber flex items-center gap-1 text-[10px] flex-shrink-0 px-1.5 py-0.5">
+                                      <RotateCcw className="w-2.5 h-2.5" /> Review due
+                                    </span>
+                                  )}
+                                </div>
+                                {!hasContent ? (
+                                  <p className="text-[11px] text-slate-400 mt-0.5">
+                                    No practice questions yet
+                                  </p>
+                                ) : !s.unlocked && (
+                                  <p className="text-[11px] text-slate-400 mt-0.5">
+                                    Recommended after completing the previous session
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex-shrink-0 ml-2">
+                              {hasContent && <StarRating stars={s.stars} />}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : topicsLoading ? (
                 <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
                   <span className="spinner text-teal-500" /> Loading topics…
                 </div>
@@ -452,6 +597,7 @@ export default function PracticePage() {
 
             {/* Question card */}
             <QuestionCard
+              key={questions[currentIdx]._id}
               question={questions[currentIdx]}
               questionNumber={currentIdx + 1}
               totalQuestions={questions.length}
@@ -477,11 +623,12 @@ export default function PracticePage() {
           <SessionSummary
             subject={subject}
             topic={topic}
+            examType={examType}
             totalMarks={totalMarks}
             availableMarks={availableMarks}
             accuracy={accuracy}
             duration={duration}
-            grade={availableMarks > 0 ? calculateWAECGrade(totalMarks, availableMarks) : null}
+            grade={availableMarks > 0 ? calculateGrade(totalMarks, availableMarks, examType) : null}
             masteryUpdates={masteryUpdates}
             onPracticeAgain={handleRestart}
           />

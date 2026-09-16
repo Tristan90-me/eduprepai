@@ -18,6 +18,8 @@ import reportRoutes     from './routes/report.routes.js'
 import adminRoutes      from './routes/admin.routes.js'
 import settingsRoutes from './routes/settings.routes.js'
 import analyticsRoutes  from './routes/analytics.routes.js'
+import teacherRoutes    from './routes/teacher.routes.js'
+import assignmentRoutes from './routes/assignment.routes.js'
 
 import { errorHandler } from './middleware/error.middleware.js'
 
@@ -54,6 +56,8 @@ app.use('/api/reports',     reportRoutes)
 app.use('/api/admin',       adminRoutes)
 app.use('/api/settings',    settingsRoutes)
 app.use('/api/analytics',   analyticsRoutes)
+app.use('/api/teacher',     teacherRoutes)
+app.use('/api/assignments', assignmentRoutes)
 
 // ── Health check ───────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

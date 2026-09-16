@@ -25,7 +25,7 @@ export default function AdminRegisterPage() {
     try {
       await adminRegister(form)
       toast.success('Admin account created!')
-      navigate('/dashboard')
+      navigate('/admin')
     } catch (err) {
       setError(err.message)
     } finally {
@@ -35,8 +35,8 @@ export default function AdminRegisterPage() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-5"
-      style={{ background: 'var(--color-bg)' }}
+      className="admin-theme min-h-screen flex items-center justify-center p-5"
+      style={{ background: '#F1F5F9' }}
     >
       <div className="w-full max-w-md animate-fade-in">
 

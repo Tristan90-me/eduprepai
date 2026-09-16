@@ -15,6 +15,8 @@ const examQuestionSchema = new mongoose.Schema({
   modelAnswer:    String,
   marks:          Number,
   topic:          String,
+  hasImage:       { type: Boolean, default: false },
+  imageData:      { type: String,  default: '' },
   parts: [{
     part:   String,
     text:   String,
@@ -35,6 +37,11 @@ const examQuestionSchema = new mongoose.Schema({
     marksAvailable: Number,
     feedback:       String,
   }],
+
+  // Cached AI explanation, generated on demand after marking.
+  // Shape varies: { kind: 'mcq', ... } or { kind: 'checklist', ... } —
+  // see generateExplanation / generateMarkingChecklist in marking.utils.js.
+  aiExplanation: { type: mongoose.Schema.Types.Mixed, default: null },
 }, { _id: false })
 
 // ── Main MockExam schema ───────────────────────────────────────
@@ -60,8 +67,14 @@ const mockExamSchema = new mongoose.Schema(
 
     // ── The three sections ─────────────────────────────────────
     sectionA: [examQuestionSchema],   // MCQ — 40 questions, 1 mark each
-    sectionB: [examQuestionSchema],   // Structured — 4 questions, 10 marks each
-    sectionC: [examQuestionSchema],   // Essay — 2 questions, answer 1, 20 marks
+    sectionB: [examQuestionSchema],   // Structured — count/marks vary by subject, see mockGenerator.utils.js
+    sectionC: [examQuestionSchema],   // Essay — count/marks vary by subject; answer sectionCAnswerCount of them
+
+    // How many of the offered sectionC questions the student must
+    // answer — 1 for the generic structure, but e.g. BECE Computing
+    // offers 4 and expects 3 answered. Set at generation time from
+    // getPaperStructure() so the exam-taking UI knows before marking.
+    sectionCAnswerCount: { type: Number, default: 1 },
 
     // ── Timing ─────────────────────────────────────────────────
     timeAllowedMinutes: { type: Number, default: 160 },  // 2hrs 40mins
@@ -74,6 +87,13 @@ const mockExamSchema = new mongoose.Schema(
       sectionAMarks:   { type: Number, default: 0 },
       sectionBMarks:   { type: Number, default: 0 },
       sectionCMarks:   { type: Number, default: 0 },
+      // "Out of" totals for each section on this specific exam — not
+      // every subject uses the generic 40/40/20 split (e.g. BECE
+      // Computing is 40/24/36), so displays must read these instead
+      // of hardcoding a denominator.
+      sectionATotal:   { type: Number, default: 40 },
+      sectionBTotal:   { type: Number, default: 40 },
+      sectionCTotal:   { type: Number, default: 20 },
       totalMarks:      { type: Number, default: 0 },
       availableMarks:  { type: Number, default: 100 },
       percent:         { type: Number, default: 0 },

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
-import { register, login, getMe, adminLogin, adminRegister } from '../controllers/auth.controller.js'
+import { register, login, getMe, adminLogin, adminRegister, teacherLogin, teacherRegister } from '../controllers/auth.controller.js'
 import { protect } from '../middleware/auth.middleware.js'
 
 const router = Router()
@@ -22,6 +22,10 @@ router.post('/login',    login)
 // Admin — separate from student register/login entirely
 router.post('/admin-login',    adminAuthLimiter, adminLogin)
 router.post('/admin-register', adminAuthLimiter, adminRegister)
+
+// Teacher — same pattern, own invite code, own rate limiter
+router.post('/teacher-login',    adminAuthLimiter, teacherLogin)
+router.post('/teacher-register', adminAuthLimiter, teacherRegister)
 
 // Protected — token required
 router.get('/me', protect, getMe)

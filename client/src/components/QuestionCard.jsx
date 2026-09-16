@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { CheckCircle2, XCircle, Clock, BookOpen, ChevronRight } from 'lucide-react'
 import MasteryBadge from './MasteryBadge'
 import MathText from './MathText'
+import QuestionDiagram from './QuestionDiagram'
+import PartAnswerEditor from './PartAnswerEditor'
 
 // ── Option button colours ──────────────────────────────────────
 const OPTION_LETTERS = ['A', 'B', 'C', 'D']
@@ -84,23 +86,16 @@ export default function QuestionCard({
         )}
       </div>
 
-      {/* ── Question text ──────────────────────────────────── */}
+      {/* ── Diagram, then question text ──────────────────────── */}
+      <QuestionDiagram
+        questionId={question._id}
+        hasImage={question.hasImage}
+        imageData={question.imageData}
+      />
+
       <p className="text-slate-800 text-base leading-relaxed mb-6">
         <MathText text={question.questionText} />
       </p>
-
-      {/* ── Structured question parts ──────────────────────── */}
-      {question.parts?.length > 0 && (
-        <div className="mb-5 space-y-2 bg-slate-50 rounded-xl p-4">
-          {question.parts.map(part => (
-            <div key={part.part} className="flex gap-2 text-sm text-slate-700">
-              <span className="font-semibold text-teal-600 flex-shrink-0">({part.part})</span>
-              <span>{part.text}</span>
-              <span className="text-slate-400 ml-auto flex-shrink-0">[{part.marks} marks]</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* ── MCQ options ────────────────────────────────────── */}
       {isMCQ && (
@@ -140,25 +135,16 @@ export default function QuestionCard({
       {/* ── Typed answer (Structured + Essay) ─────────────── */}
       {!isMCQ && (
         <div className="mb-6">
-          <label className="label">
-            Your answer
-            {question.type === 'Essay' && (
-              <span className="text-slate-400 font-normal ml-1">
-                (aim for at least 3 paragraphs)
-              </span>
-            )}
-          </label>
-          <textarea
+          <PartAnswerEditor
+            parts={question.parts}
             value={typedAnswer}
-            onChange={e => !isAnswered && setTypedAnswer(e.target.value)}
+            onChange={setTypedAnswer}
             disabled={isAnswered}
             placeholder={
               question.type === 'Structured'
                 ? 'Type your answer here. Address each part (a), (b), (c) clearly...'
                 : 'Write your essay here. Include an introduction, main body, and conclusion...'
             }
-            rows={question.type === 'Essay' ? 10 : 5}
-            className="input resize-none disabled:bg-slate-50 disabled:text-slate-600"
           />
           {!isAnswered && typedAnswer.length > 0 && (
             <p className="text-xs text-slate-400 mt-1.5 text-right">

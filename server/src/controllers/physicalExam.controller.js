@@ -4,7 +4,7 @@ import {
   markFullPaper,
   generateExaminerComment,
 } from '../utils/mockGenerator.utils.js'
-import { calculateWAECGrade } from '../utils/marking.utils.js'
+import { calculateGrade } from '../utils/marking.utils.js'
 import { generateAIJSON }     from '../utils/aiService.js'
 import { asyncHandler, AppError } from '../middleware/error.middleware.js'
 
@@ -28,7 +28,10 @@ export const getStudentExams = asyncHandler(async (req, res) => {
     status:    { $in: ['generated', 'marked'] },
   })
   .sort({ createdAt: -1 })
-  .select('subject examType status results createdAt')
+  // sectionA/B/C are needed so PhysicalExamPanel can size its answer
+  // entry grids to this exam's real structure (e.g. BECE Computing's
+  // 4-question Section B) instead of assuming the generic 40/4/2 shape.
+  .select('subject examType status results createdAt sectionA sectionB sectionC sectionCAnswerCount')
   .lean()
 
   res.json({ success: true, exams })
@@ -42,10 +45,12 @@ export const submitPhysicalExam = asyncHandler(async (req, res) => {
   const {
     examId,
     studentId,
-    sectionAAnswers,   // array of 40 strings: 'A'|'B'|'C'|'D'|''
-    sectionBAnswers,   // array of 4 strings: typed or photo-extracted text
-    sectionCAnswer,    // string: essay text
-    sectionCIndex,     // 0 or 1 — which essay question was answered
+    sectionAAnswers,   // array aligned to exam.sectionA: 'A'|'B'|'C'|'D'|''
+    sectionBAnswers,   // array aligned to exam.sectionB: typed or photo-extracted text
+    sectionCAnswers,   // array aligned to exam.sectionC: '' for unanswered — same
+                        // index-aligned shape mockExam.controller.js's submitExam
+                        // already uses, so markFullPaper needs no changes to mark
+                        // however many of these are actually filled in.
     notes,             // admin notes about the submission
   } = req.body
 
@@ -66,10 +71,10 @@ export const submitPhysicalExam = asyncHandler(async (req, res) => {
     })
   }
 
-  // ── Apply Section C answer ─────────────────────────────────
-  if (sectionCAnswer !== undefined && sectionCIndex !== undefined) {
-    exam.sectionC.forEach((q, i) => {
-      q.studentAnswer = i === sectionCIndex ? sectionCAnswer : ''
+  // ── Apply Section C answers ─────────────────────────────────
+  if (sectionCAnswers?.length) {
+    sectionCAnswers.forEach((ans, i) => {
+      if (exam.sectionC[i]) exam.sectionC[i].studentAnswer = ans || ''
     })
   }
 
@@ -93,9 +98,12 @@ export const submitPhysicalExam = asyncHandler(async (req, res) => {
     marking.sectionAMarks,
     marking.sectionBMarks,
     marking.sectionCMarks,
+    marking.sectionATotal,
+    marking.sectionBTotal,
+    marking.sectionCTotal,
   )
 
-  const gradeInfo = calculateWAECGrade(marking.totalMarks, marking.availableMarks)
+  const gradeInfo = calculateGrade(marking.totalMarks, marking.availableMarks, exam.examType)
 
   exam.sectionA = marking.markedA
   exam.sectionB = marking.markedB
@@ -105,6 +113,9 @@ export const submitPhysicalExam = asyncHandler(async (req, res) => {
     sectionAMarks:   marking.sectionAMarks,
     sectionBMarks:   marking.sectionBMarks,
     sectionCMarks:   marking.sectionCMarks,
+    sectionATotal:   marking.sectionATotal,
+    sectionBTotal:   marking.sectionBTotal,
+    sectionCTotal:   marking.sectionCTotal,
     totalMarks:      marking.totalMarks,
     availableMarks:  marking.availableMarks,
     percent:         marking.percent,

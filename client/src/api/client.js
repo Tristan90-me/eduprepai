@@ -9,10 +9,14 @@ const api = axios.create({
   timeout: 30000, // 30s — generous for AI generation endpoints
 })
 
+// sessionStorage, not localStorage — each browser tab keeps its own
+// independent session (see AuthContext.jsx for why), so this must read
+// the same storage AuthContext writes to.
+
 // ── Request interceptor: attach JWT ───────────────────────────
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('eduprepai_token')
+    const token = sessionStorage.getItem('eduprepai_token')
     if (token) config.headers.Authorization = `Bearer ${token}`
     return config
   },
@@ -24,17 +28,11 @@ api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     if (error.response?.status === 401) {
-      // Send an admin whose session just expired back to the admin
-      // login, not the student one — read role before clearing it.
-      let redirectTo = '/login'
-      try {
-        const stored = localStorage.getItem('eduprepai_user')
-        if (stored && JSON.parse(stored).role === 'admin') redirectTo = '/admin/login'
-      } catch { /* ignore malformed stored user */ }
-
-      localStorage.removeItem('eduprepai_token')
-      localStorage.removeItem('eduprepai_user')
-      window.location.href = redirectTo
+      // /login now covers every role via a dropdown, so there's no
+      // longer a separate admin/teacher login path to route back to.
+      sessionStorage.removeItem('eduprepai_token')
+      sessionStorage.removeItem('eduprepai_user')
+      window.location.href = '/login'
     }
     const message = error.response?.data?.message || 'Something went wrong'
     return Promise.reject(new Error(message))

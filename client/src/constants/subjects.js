@@ -15,7 +15,7 @@ export const SUBJECTS_WASSCE = [
 ]
 
 export const SUBJECTS_BECE = [
-  'Mathematics', 'English Language', 'Integrated Science', 'Social Studies',
+  'Mathematics', 'English Language', 'Science', 'Social Studies',
   'French', 'Computing', 'Religious & Moral Education', 'Creative Arts and Design', 'Career Technology',
   ...GHANAIAN_LANGUAGES,
 ]

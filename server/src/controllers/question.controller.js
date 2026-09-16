@@ -63,7 +63,7 @@ export const getQuestions = asyncHandler(async (req, res) => {
     .sort({ year: -1, createdAt: -1 })
     .skip(skip)
     .limit(Number(limit))
-    .select('-explanation -modelAnswer') // don't send answers to client by default
+    .select('-explanation -modelAnswer -imageData') // don't send answers or diagram data to client by default
 
   res.json({
     success: true,
@@ -82,6 +82,18 @@ export const getQuestionById = asyncHandler(async (req, res) => {
   if (!question) throw new AppError('Question not found', 404)
 
   res.json({ success: true, question })
+})
+
+// ── GET /api/questions/:id/image ────────────────────────────────
+// Lazily fetches just the diagram image for one question — kept out
+// of batch question fetches (practice sessions, listings) so those
+// stay light, and only loaded when a question flagged hasImage:true
+// is actually being displayed.
+export const getQuestionImage = asyncHandler(async (req, res) => {
+  const question = await Question.findById(req.params.id).select('imageData hasImage')
+  if (!question) throw new AppError('Question not found', 404)
+
+  res.json({ success: true, hasImage: question.hasImage, imageData: question.imageData })
 })
 
 // ── PUT /api/questions/:id ─────────────────────────────────────

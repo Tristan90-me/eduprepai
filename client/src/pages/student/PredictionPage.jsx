@@ -109,6 +109,7 @@ export default function PredictionPage() {
   const [cacheExpiresAt, setCacheExpiresAt] = useState(null)
   const [filterTier,   setFilterTier]   = useState('all')
   const [totalQs,      setTotalQs]      = useState(0)
+  const [dataMaturity, setDataMaturity] = useState(null)
   const [explainerOpen, setExplainerOpen] = useState(false)
 
   const subjectOptions = isAdmin
@@ -143,6 +144,7 @@ export default function PredictionPage() {
       setNotGenerated(!!data.notGenerated)
       setCacheExpiresAt(data.cacheExpiresAt)
       setTotalQs(data.totalQuestionsAnalysed)
+      setDataMaturity(data.dataMaturity || null)
     } catch (err) {
       toast.error(err.message)
       setPredictions([])
@@ -177,11 +179,19 @@ export default function PredictionPage() {
     .slice(0, 3)
 
   // ── Cache timestamp display ────────────────────────────────
+  // Nothing ever regenerates automatically — the 7-day window only
+  // marks an analysis "eligible for a re-run", it never changes what's
+  // shown on its own. Wording (and who gets a refresh button, below)
+  // reflects that so it can't read as "this will change on its own".
   const refreshInfo = !cacheExpiresAt
     ? ''
     : stale
-      ? ' · Cache expired — refresh for the latest analysis'
-      : ` · Refreshes in ${daysUntil(cacheExpiresAt)} day${daysUntil(cacheExpiresAt) !== 1 ? 's' : ''}`
+      ? (isAdmin
+          ? ' · Eligible for a re-run — refresh once new past papers are added'
+          : ' · Stays as-is until your teachers add new past papers')
+      : isAdmin
+        ? ` · Eligible for re-run in ${daysUntil(cacheExpiresAt)} day${daysUntil(cacheExpiresAt) !== 1 ? 's' : ''}`
+        : ''
 
   const cacheLabel = generatedAt
     ? `${fromCache ? 'Cached' : 'Generated'} ${new Date(generatedAt).toLocaleDateString('en-GB', {
@@ -190,12 +200,19 @@ export default function PredictionPage() {
       })} · ${totalQs} questions analysed${refreshInfo}`
     : null
 
-  const actionLabel = isAdmin ? 'Re-run analysis' : notGenerated ? 'Generate predictions' : 'Refresh predictions'
+  const actionLabel = isAdmin ? 'Re-run analysis' : 'Generate predictions'
+
+  // BECE is examined against a new curriculum since 2024 — pre-reform
+  // past questions are excluded from predictions, so "10 years" would
+  // overclaim the actual basis. WASSCE keeps the original framing.
+  const pageSubtitle = examType === 'BECE'
+    ? 'AI-powered forecasts from past BECE papers under the current curriculum'
+    : 'AI-powered forecasts from 10 years of past WASSCE papers'
 
   return (
     <AppShell
       title="Topic Predictions"
-      subtitle={`AI-powered forecasts from 10 years of past ${examType} papers`}
+      subtitle={pageSubtitle}
     >
       <div className="max-w-6xl mx-auto space-y-6">
 
@@ -268,14 +285,14 @@ export default function PredictionPage() {
               )}
             </div>
 
-            {/* Generate / re-run action — only shown once there's
-               something to act on. Before that, the single CTA in the
-               "not generated yet" empty state below is the only way
-               to trigger analysis, so it's never ambiguous whether
-               something has already run. Admins can always re-run
-               once results exist (fresh or stale); students only see
-               this when the cache is missing or stale. */}
-            {(isAdmin ? !notGenerated : (notGenerated || stale)) && (
+            {/* Generate / re-run action. Admins can always re-run once
+               results exist (fresh or stale) — they're the ones adding
+               past papers, so they decide when new data justifies a
+               change. Students only ever get this for a first-time
+               generation: once a prediction exists, it stays exactly
+               as-is for them — no button to reshuffle it themselves,
+               so what they're studying against never moves under them. */}
+            {(isAdmin ? !notGenerated : notGenerated) && (
               <button
                 onClick={handleRefresh}
                 disabled={loading}
@@ -290,10 +307,29 @@ export default function PredictionPage() {
           {/* Cache / generation info */}
           {cacheLabel && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+              {/* The pulsing "needs attention" dot only makes sense for
+                 admins — they're the only ones with a refresh action to
+                 take. Students get a steady dot either way; a prediction
+                 going stale isn't something for them to act on. */}
               <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                stale ? 'bg-orange-400 animate-pulse-soft' : fromCache ? 'bg-amber-400' : 'bg-green-500'
+                stale && isAdmin ? 'bg-orange-400 animate-pulse-soft' : fromCache ? 'bg-amber-400' : 'bg-green-500'
               }`} />
               <p className="text-xs text-slate-400">{cacheLabel}</p>
+            </div>
+          )}
+
+          {/* Thin-data caveat — BECE's new curriculum only has a few
+             real post-reform past-question years so far, so confidence
+             leans on syllabus coverage rather than years of history.
+             Say so explicitly instead of presenting it the same as a
+             mature dataset. */}
+          {dataMaturity?.isThinData && (
+            <div className="flex items-center gap-2 mt-2">
+              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-amber-400" />
+              <p className="text-xs text-amber-600">
+                Based on {dataMaturity.yearsAvailable} year{dataMaturity.yearsAvailable !== 1 ? 's' : ''} of
+                {' '}new-curriculum past questions — confidence will improve as more are added.
+              </p>
             </div>
           )}
         </div>
@@ -322,8 +358,12 @@ export default function PredictionPage() {
               <p>
                 Topics are grouped into tiers: <span className="font-medium text-red-600">Hot</span> (70%+ confidence),{' '}
                 <span className="font-medium text-amber-600">Warm</span> (45%+), and{' '}
-                <span className="font-medium text-teal-600">Watch</span> (below that). Results are cached for 7 days
-                and shared across every student studying the same subject.
+                <span className="font-medium text-teal-600">Watch</span> (below that). Results are shared across
+                every student studying the same subject.
+              </p>
+              <p>
+                Once generated, a prediction stays exactly as-is — it only changes when a teacher adds new past
+                papers and re-runs the analysis, never on its own. What you're studying against won't shift under you.
               </p>
             </div>
           )}

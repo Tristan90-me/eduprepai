@@ -63,6 +63,17 @@ const predictionSchema = new mongoose.Schema(
     }],
 
     totalQuestionsAnalysed: Number,
+
+    // ── Data maturity ──────────────────────────────────────────
+    // How many distinct years of (curriculum-era-filtered) past
+    // questions this prediction was actually based on — surfaced to
+    // the student/admin so a thin BECE post-reform sample doesn't
+    // read with the same confidence as a mature dataset.
+    dataMaturity: {
+      yearsAvailable: { type: Number,  default: 0 },
+      isThinData:     { type: Boolean, default: false },
+    },
+
     runBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref:  'User',

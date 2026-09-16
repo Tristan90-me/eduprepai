@@ -144,3 +144,67 @@ export const adminRegister = asyncHandler(async (req, res) => {
     user: user.toSafeObject(),
   })
 })
+
+// ── POST /api/auth/teacher-login ───────────────────────────────
+// Mirrors adminLogin — same "never reveal which case it was" guard.
+export const teacherLogin = asyncHandler(async (req, res) => {
+  const { email, password } = req.body
+
+  if (!email || !password) {
+    throw new AppError('Email and password are required.', 400)
+  }
+
+  const user    = await User.findOne({ email }).select('+password')
+  const isMatch = user ? await user.comparePassword(password) : false
+
+  if (!user || !isMatch || user.role !== 'teacher') {
+    throw new AppError('Invalid email or password.', 401)
+  }
+
+  user.lastActive = new Date()
+  await user.save({ validateBeforeSave: false })
+
+  const token = generateToken(user._id, user.role)
+
+  res.json({
+    success: true,
+    message: 'Login successful!',
+    token,
+    user: user.toSafeObject(),
+  })
+})
+
+// ── POST /api/auth/teacher-register ────────────────────────────
+// Invite-code gated teacher self-registration, mirroring adminRegister.
+// Kept as a separate code (TEACHER_SIGNUP_CODE) from the admin one so a
+// school can hand out the teacher code without granting admin access.
+export const teacherRegister = asyncHandler(async (req, res) => {
+  const { fullName, email, password, inviteCode } = req.body
+
+  const serverCode = process.env.TEACHER_SIGNUP_CODE
+  if (!serverCode || !serverCode.trim()) {
+    throw new AppError('Teacher registration is not available.', 403)
+  }
+  if (!inviteCode || inviteCode !== serverCode) {
+    throw new AppError('Invalid invite code.', 403)
+  }
+
+  const existing = await User.findOne({ email })
+  if (existing) throw new AppError('Email already registered.', 409)
+
+  const user = await User.create({
+    fullName,
+    email,
+    password,
+    role: 'teacher',
+  })
+
+  const token = generateToken(user._id, user.role)
+
+  res.status(201).json({
+    success: true,
+    message: 'Teacher account created successfully!',
+    token,
+    user: user.toSafeObject(),
+  })
+})

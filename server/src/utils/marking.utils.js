@@ -1,9 +1,10 @@
 import { generateAIJSON } from './aiService.js'
+import { getCurriculumScope, formatScopeNote } from './curriculumGrounding.utils.js'
 
-// ── WAEC grade calculator ──────────────────────────────────────
+// ── WASSCE grade calculator ─────────────────────────────────────
 // Takes a raw score and total available marks.
-// Returns the official WAEC grade and label.
-export const calculateWAECGrade = (score, totalMarks) => {
+// Returns the official WASSCE grade and label.
+export const calculateWASSCEGrade = (score, totalMarks) => {
   if (!totalMarks) return { grade: 'N/A', label: 'No marks', percent: 0 }
 
   const percent = Math.round((score / totalMarks) * 100)
@@ -18,6 +19,36 @@ export const calculateWAECGrade = (score, totalMarks) => {
   if (percent >= 40) return { grade: 'E8', label: 'Pass',       percent }
   return                     { grade: 'F9', label: 'Fail',       percent }
 }
+
+// ── BECE grade calculator ───────────────────────────────────────
+// Distinct scale from WASSCE — a plain 1 (best) to 9 (worst) numeric
+// grade with its own bands and remarks (WAEC BECE grading, 2026).
+// Grade is returned as a string ('1'..'9') to match the existing
+// `waecGrade: String` schema field used by both exam types.
+export const calculateBECEGrade = (score, totalMarks) => {
+  if (!totalMarks) return { grade: 'N/A', label: 'No marks', percent: 0 }
+
+  const percent = Math.round((score / totalMarks) * 100)
+
+  if (percent >= 90) return { grade: '1', label: 'Highest',      percent }
+  if (percent >= 80) return { grade: '2', label: 'Higher',       percent }
+  if (percent >= 70) return { grade: '3', label: 'High',         percent }
+  if (percent >= 60) return { grade: '4', label: 'High Average', percent }
+  if (percent >= 55) return { grade: '5', label: 'Average',      percent }
+  if (percent >= 50) return { grade: '6', label: 'Low Average',  percent }
+  if (percent >= 40) return { grade: '7', label: 'Low',          percent }
+  if (percent >= 35) return { grade: '8', label: 'Lower',        percent }
+  return                     { grade: '9', label: 'Lowest',       percent }
+}
+
+// ── Grade dispatcher ─────────────────────────────────────────────
+// Picks the right scale for the student's exam type. Defaults to
+// WASSCE for anything other than 'BECE', matching the same
+// default-to-WASSCE convention used by resolveExamType().
+export const calculateGrade = (score, totalMarks, examType) =>
+  examType === 'BECE'
+    ? calculateBECEGrade(score, totalMarks)
+    : calculateWASSCEGrade(score, totalMarks)
 
 // ── MCQ marker ────────────────────────────────────────────────
 // Simple string comparison — no AI needed.
@@ -74,7 +105,7 @@ Return this exact JSON structure:
   "totalMarksAwarded": 5,
   "totalMarksAvailable": 10,
   "overallFeedback": "Examiner comment on the overall response."
-}`
+}` + formatScopeNote(getCurriculumScope(subject, question.topic))
 
   try {
     const result = await generateAIJSON(prompt, systemPrompt)
@@ -134,7 +165,7 @@ Return this exact JSON structure:
   "totalMarksAvailable": 20,
   "examinerComment": "Overall examiner comment on the quality of the response.",
   "passFailIndicator": "Pass"
-}`
+}` + formatScopeNote(getCurriculumScope(subject, question.topic))
 
   try {
     const result = await generateAIJSON(prompt, systemPrompt)
@@ -194,7 +225,7 @@ Return this exact JSON:
   "commonMistakes": "What do most candidates get wrong on this type of question?",
   "studyTip": "One specific study tip for this topic.",
   "keyTerms": ["term1", "term2"]
-}`
+}` + formatScopeNote(getCurriculumScope(subject, question.topic))
 
   try {
     return await generateAIJSON(prompt, systemPrompt)
@@ -211,9 +242,87 @@ Return this exact JSON:
   }
 }
 
+// ── Marking checklist for Structured/Essay questions ────────────
+// Called from mock exam review when a student taps "Explain" on a
+// non-MCQ question. Unlike generateExplanation's prose, this breaks
+// the marking guide into concrete points and says whether the
+// student's actual answer achieved each one — a mark scheme, not
+// a study article.
+export const generateMarkingChecklist = async (question, subject) => {
+  const systemPrompt = `You are an experienced WAEC ${subject} examiner explaining a marked answer to a student.
+Be concrete and specific — reference exactly what the student wrote, not generic advice.
+Respond with valid JSON only. No markdown. No preamble.`
+
+  const prompt = `
+QUESTION: ${question.questionText}
+
+${question.parts?.length ? `PARTS:\n${question.parts.map(p => `(${p.part}) [${p.marks}m] ${p.text}`).join('\n')}` : ''}
+
+MARKING GUIDE (model answer): ${question.modelAnswer || 'Not provided'}
+
+STUDENT'S ANSWER:
+${question.studentAnswer || '(no answer given)'}
+
+MARKS AWARDED: ${question.marksAwarded ?? 0} / ${question.marks}
+EXAMINER FEEDBACK ALREADY GIVEN: ${question.aiFeedback || 'None'}
+
+Break the marking guide down into the concrete, specific points a WAEC examiner
+would award marks for on this question. For each point, decide whether the
+student's actual answer above achieved it, and note briefly how/why.
+
+Return this exact JSON:
+{
+  "keyMarkingPoints": [
+    { "point": "Specific mark-earning point derived from the marking guide", "achieved": true, "note": "Where/how the student did or didn't cover this" }
+  ],
+  "whatWasMissing": ["Concrete thing the student should add to earn full marks"],
+  "studyTip": "One specific study tip for this topic."
+}` + formatScopeNote(getCurriculumScope(subject, question.topic))
+
+  try {
+    return await generateAIJSON(prompt, systemPrompt)
+  } catch (err) {
+    console.error('[Marking] Checklist generation failed:', err.message)
+    return {
+      keyMarkingPoints: [],
+      whatWasMissing:   [],
+      studyTip:         `Review your ${question.topic} notes and compare your answer to the marking scheme above.`,
+    }
+  }
+}
+
+// ── Spaced repetition (Leitner system) ──────────────────────────
+// Review interval in days per box — box 0 (just missed) reviews
+// tomorrow; box 5 (well consolidated) reviews in a month. Correct
+// answers advance a box and push the review date further out; a
+// wrong answer resets straight back to box 0 regardless of how far
+// it had climbed, so a genuine gap doesn't quietly resurface far away
+// in the future because it happened to have a good streak once.
+const LEITNER_INTERVAL_DAYS = [1, 1, 3, 7, 14, 30]
+
+const daysFromNow = (days) => new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+
+// ── Score → star rating ──────────────────────────────────────────
+// Mirrors the tier boundaries client/src/components/MasteryBadge.jsx
+// already uses (getMasteryConfig) — stars and the existing mastery
+// tier language must never disagree.
+export const scoreToStars = (score) => {
+  if (score === 0)  return 0
+  if (score < 30)   return 1
+  if (score < 55)   return 2
+  if (score < 75)   return 3
+  if (score < 90)   return 4
+  return 5
+}
+
+// The "Competent" boundary — the bar a session must clear on the
+// Session Path before the next one is presented as unlocked.
+export const UNLOCK_THRESHOLD = 55
+
 // ── Mastery score updater ──────────────────────────────────────
 // Pure function — takes current mastery state and answer result,
-// returns new score and difficulty. No database calls.
+// returns new score, difficulty, and spaced-repetition schedule.
+// No database calls.
 export const computeMasteryUpdate = (current, isCorrect, marksAwarded, marksAvailable) => {
   const partialCredit = marksAvailable > 0 ? marksAwarded / marksAvailable : 0
 
@@ -221,6 +330,7 @@ export const computeMasteryUpdate = (current, isCorrect, marksAwarded, marksAvai
   let consecutiveCorrect   = current.consecutiveCorrect   || 0
   let consecutiveIncorrect = current.consecutiveIncorrect || 0
   let newDifficulty  = current.difficulty || 2
+  let leitnerBox     = current.leitnerBox || 0
 
   if (isCorrect || partialCredit >= 0.7) {
     // Good answer — increase mastery
@@ -234,6 +344,8 @@ export const computeMasteryUpdate = (current, isCorrect, marksAwarded, marksAvai
       newDifficulty      += 1
       consecutiveCorrect  = 0
     }
+
+    leitnerBox = Math.min(5, leitnerBox + 1)
   } else {
     // Wrong answer — decrease mastery slightly
     const loss = partialCredit < 0.3 ? 3 : 1
@@ -246,6 +358,8 @@ export const computeMasteryUpdate = (current, isCorrect, marksAwarded, marksAvai
       newDifficulty       -= 1
       consecutiveIncorrect = 0
     }
+
+    leitnerBox = 0
   }
 
   return {
@@ -253,5 +367,7 @@ export const computeMasteryUpdate = (current, isCorrect, marksAwarded, marksAvai
     difficulty:           newDifficulty,
     consecutiveCorrect,
     consecutiveIncorrect,
+    leitnerBox,
+    nextReviewDate:       daysFromNow(LEITNER_INTERVAL_DAYS[leitnerBox]),
   }
 }

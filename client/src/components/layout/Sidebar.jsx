@@ -1,38 +1,44 @@
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { assignmentAPI } from '../../api/assignment.api'
 import {
   LayoutDashboard, BookOpen, TrendingUp, FileText,
-  BarChart2, Trophy, Settings, LogOut, Shield,
+  BarChart2, Trophy, Settings, LogOut, ClipboardList,
   ChevronRight, GraduationCap,
 } from 'lucide-react'
 
-// ── Navigation items per role ──────────────────────────────────
-// Students and admins see different nav items.
+// This sidebar only ever renders for students — admins/teachers have
+// their own shells with no student nav items, so there's nothing
+// role-based to branch on here any more.
 const STUDENT_NAV = [
   { to: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard'   },
   { to: '/practice',    icon: BookOpen,         label: 'Practice'    },
   { to: '/predict',     icon: TrendingUp,       label: 'Predictions' },
   { to: '/mock-exam',   icon: FileText,         label: 'Mock Exam'   },
+  { to: '/assignments', icon: ClipboardList,    label: 'Assignments' },
   { to: '/analytics',   icon: BarChart2,        label: 'Analytics'   },
   { to: '/leaderboard', icon: Trophy,           label: 'Leaderboard' },
-]
-
-const ADMIN_NAV = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview'    },
-  { to: '/admin',     icon: Shield,          label: 'Admin Panel' },
-  { to: '/predict',   icon: TrendingUp,      label: 'Predictions' },
-  { to: '/analytics', icon: BarChart2,       label: 'Analytics'   },
 ]
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const { user, logout } = useAuth()
   const navigate          = useNavigate()
-  const navItems          = user?.role === 'admin' ? ADMIN_NAV : STUDENT_NAV
+
+  // Fetch once on mount — this app's existing notification-adjacent
+  // features (e.g. badge toasts) are all fetch-on-load, not real-time,
+  // so a pending-assignment count follows the same convention rather
+  // than adding new polling infrastructure just for this.
+  const [pendingAssignments, setPendingAssignments] = useState(0)
+  useEffect(() => {
+    assignmentAPI.getPendingCount()
+      .then(data => setPendingAssignments(data.count || 0))
+      .catch(() => {}) // silent — badge just stays at 0
+  }, [])
 
   const handleLogout = () => {
-    const wasAdmin = user?.role === 'admin'
     logout()
-    navigate(wasAdmin ? '/admin/login' : '/login')
+    navigate('/login')
   }
 
   const accuracy = user?.totalQuestionsAnswered > 0
@@ -93,35 +99,27 @@ export default function Sidebar({ mobileOpen, onClose }) {
               <p className="text-white text-sm font-medium truncate">{user?.fullName}</p>
               <p className="text-teal-300 text-xs truncate">{user?.examType || 'Student'}</p>
             </div>
-            {user?.role === 'admin' && (
-              <span className="text-xs bg-amber-400/20 text-amber-300 border border-amber-400/30 px-1.5 py-0.5 rounded-md font-medium">
-                Admin
-              </span>
-            )}
           </div>
 
-          {/* Quick stats — only for students */}
-          {user?.role !== 'admin' && (
-            <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/10">
-              <div className="text-center">
-                <p className="text-white font-semibold text-sm">{user?.streak || 0}</p>
-                <p className="text-teal-400 text-xs">Day streak</p>
-              </div>
-              <div className="text-center">
-                <p className="text-white font-semibold text-sm">{accuracy}%</p>
-                <p className="text-teal-400 text-xs">Accuracy</p>
-              </div>
+          <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/10">
+            <div className="text-center">
+              <p className="text-white font-semibold text-sm">{user?.streak || 0}</p>
+              <p className="text-teal-400 text-xs">Day streak</p>
             </div>
-          )}
+            <div className="text-center">
+              <p className="text-white font-semibold text-sm">{accuracy}%</p>
+              <p className="text-teal-400 text-xs">Accuracy</p>
+            </div>
+          </div>
         </div>
 
         {/* ── Navigation links ─────────────────────────────── */}
         <nav className="flex-1 px-3 py-4 space-y-0.5" aria-label="Sidebar navigation">
           <p className="text-teal-500 text-xs font-medium uppercase tracking-wider px-3 mb-2">
-            {user?.role === 'admin' ? 'Administration' : 'Study Tools'}
+            Study Tools
           </p>
 
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {STUDENT_NAV.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
@@ -143,14 +141,19 @@ export default function Sidebar({ mobileOpen, onClose }) {
                   )}
                   <Icon className={`w-4 h-4 flex-shrink-0 transition-colors ${isActive ? 'text-teal-400' : 'text-teal-400/60 group-hover:text-teal-300'}`} />
                   <span className="flex-1">{label}</span>
+                  {to === '/assignments' && pendingAssignments > 0 && (
+                    <span className="bg-amber-400 text-amber-950 text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      {pendingAssignments}
+                    </span>
+                  )}
                   {isActive && <ChevronRight className="w-3 h-3 text-teal-400/60" />}
                 </>
               )}
             </NavLink>
           ))}
 
-          {/* Subject quick-links — students only */}
-          {user?.role !== 'admin' && user?.subjects?.length > 0 && (
+          {/* Subject quick-links */}
+          {user?.subjects?.length > 0 && (
             <div className="mt-4 pt-4 border-t border-white/10">
               <p className="text-teal-500 text-xs font-medium uppercase tracking-wider px-3 mb-2">
                 My Subjects

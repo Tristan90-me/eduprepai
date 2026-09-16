@@ -1,13 +1,17 @@
 import MockExam    from '../models/MockExam.model.js'
 import Session     from '../models/Session.model.js'
 import User        from '../models/User.model.js'
-import { checkAndAwardBadges, updateStreak } from '../utils/badge.utils.js'
+import { checkAndAwardBadges, updateStreak, getBadgeDetails } from '../utils/badge.utils.js'
 import {
   generatePaper,
   markFullPaper,
   generateExaminerComment,
 } from '../utils/mockGenerator.utils.js'
-import { calculateWAECGrade } from '../utils/marking.utils.js'
+import {
+  calculateGrade,
+  generateExplanation,
+  generateMarkingChecklist,
+} from '../utils/marking.utils.js'
 import { asyncHandler, AppError } from '../middleware/error.middleware.js'
 import { resolveExamType } from '../utils/examType.utils.js'
 
@@ -48,6 +52,7 @@ export const generateMockExam = asyncHandler(async (req, res) => {
     sectionA:           paper.sectionA,
     sectionB:           paper.sectionB,
     sectionC:           paper.sectionC,
+    sectionCAnswerCount: paper.sectionCAnswerCount,
     timeAllowedMinutes: 160,
   })
 
@@ -162,9 +167,12 @@ export const submitExam = asyncHandler(async (req, res) => {
     marking.sectionAMarks,
     marking.sectionBMarks,
     marking.sectionCMarks,
+    marking.sectionATotal,
+    marking.sectionBTotal,
+    marking.sectionCTotal,
   )
 
-  const gradeInfo = calculateWAECGrade(marking.totalMarks, marking.availableMarks)
+  const gradeInfo = calculateGrade(marking.totalMarks, marking.availableMarks, exam.examType)
 
   // ── Save marked results ───────────────────────────────────────
   exam.sectionA = marking.markedA
@@ -175,6 +183,9 @@ export const submitExam = asyncHandler(async (req, res) => {
     sectionAMarks:   marking.sectionAMarks,
     sectionBMarks:   marking.sectionBMarks,
     sectionCMarks:   marking.sectionCMarks,
+    sectionATotal:   marking.sectionATotal,
+    sectionBTotal:   marking.sectionBTotal,
+    sectionCTotal:   marking.sectionCTotal,
     totalMarks:      marking.totalMarks,
     availableMarks:  marking.availableMarks,
     percent:         marking.percent,
@@ -210,7 +221,7 @@ export const submitExam = asyncHandler(async (req, res) => {
     lastActive: new Date(),
   })
   await updateStreak(req.user._id)
-  const newBadges = await checkAndAwardBadges(req.user._id)
+  const newBadges = getBadgeDetails(await checkAndAwardBadges(req.user._id))
   res.json({
     success:  true,
     message:  'Exam marked successfully',
@@ -236,6 +247,54 @@ export const getExam = asyncHandler(async (req, res) => {
     : exam
 
   res.json({ success: true, exam: payload })
+})
+
+// ── POST /api/mock-exams/:id/explain ───────────────────────────
+// Student taps "Explain" on a marked question. Cached on the exam
+// document so revisiting a question later doesn't re-call the AI.
+export const explainQuestion = asyncHandler(async (req, res) => {
+  const { section, index } = req.body
+
+  if (!['sectionA', 'sectionB', 'sectionC'].includes(section)) {
+    throw new AppError('Invalid section', 400)
+  }
+
+  const exam = await MockExam.findOne({
+    _id:       req.params.id,
+    studentId: req.user._id,
+  })
+
+  if (!exam) throw new AppError('Exam not found', 404)
+
+  // Explaining an in-progress exam would leak correctOption/modelAnswer
+  // through the back door that sanitiseExam() exists to close.
+  if (exam.status !== 'marked') {
+    throw new AppError('Explanations are only available after the exam is marked', 400)
+  }
+
+  const question = exam[section][index]
+  if (!question) throw new AppError('Question not found', 404)
+
+  if (question.aiExplanation) {
+    return res.json({ success: true, explanation: question.aiExplanation, cached: true })
+  }
+
+  const explanation = question.type === 'MCQ'
+    ? { kind: 'mcq', ...(await generateExplanation(question, question.studentAnswer, question.isCorrect, exam.subject)) }
+    : { kind: 'checklist', ...(await generateMarkingChecklist(question, exam.subject)) }
+
+  // Atomic, targeted write — avoids the optimistic-concurrency
+  // VersionError a load-mutate-save() cycle risks when two explain
+  // requests touch the same exam close together (e.g. two questions
+  // explained back to back). Last-write-wins is fine here since two
+  // concurrently-generated explanations for the same question are
+  // semantically equivalent.
+  await MockExam.updateOne(
+    { _id: req.params.id, studentId: req.user._id },
+    { $set: { [`${section}.${index}.aiExplanation`]: explanation } }
+  )
+
+  res.json({ success: true, explanation, cached: false })
 })
 
 // ── GET /api/mock-exams ────────────────────────────────────────

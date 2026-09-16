@@ -1,4 +1,5 @@
 import { useState, useEffect }  from 'react'
+import { useNavigate }           from 'react-router-dom'
 import AppShell                  from '../../components/layout/AppShell'
 import { analyticsAPI }          from '../../api/analytics.api'
 import StatCard                  from '../../components/analytics/StatCard'
@@ -6,6 +7,7 @@ import AccuracyChart             from '../../components/analytics/AccuracyChart'
 import MasteryHeatmap            from '../../components/analytics/MasteryHeatmap'
 import SubjectRadar              from '../../components/analytics/SubjectRadar'
 import MasteryBadge              from '../../components/MasteryBadge'
+import { gradeBadgeBucket }      from '../../utils/gradeUtils'
 import {
   Target, Flame, Award, BarChart2,
   BookOpen, TrendingUp, Clock, RefreshCw,
@@ -13,6 +15,7 @@ import {
 import toast from 'react-hot-toast'
 
 export default function AnalyticsPage() {
+  const navigate = useNavigate()
   const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab,     setTab]     = useState('overview')
@@ -156,13 +159,18 @@ export default function AnalyticsPage() {
           <div className="space-y-4">
             {mockHistory?.length > 0 ? (
               mockHistory.map((e, i) => (
-                <div key={i} className="card flex items-center gap-4">
+                <div
+                  key={i}
+                  onClick={() => e.examId && navigate(`/mock-exam/${e.examId}/review`)}
+                  className={`card flex items-center gap-4 ${e.examId ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+                >
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg flex-shrink-0 ${
-                    ['A1','B2','B3'].includes(e.grade)
-                      ? 'bg-green-100 text-green-700'
-                      : ['C4','C5','C6'].includes(e.grade)
-                      ? 'bg-teal-100 text-teal-700'
-                      : 'bg-red-100 text-red-700'
+                    {
+                      green: 'bg-green-100 text-green-700',
+                      teal:  'bg-teal-100 text-teal-700',
+                      amber: 'bg-amber-100 text-amber-700',
+                      red:   'bg-red-100 text-red-700',
+                    }[gradeBadgeBucket(e.grade, e.examType)]
                   }`}>
                     {e.grade}
                   </div>
@@ -177,9 +185,20 @@ export default function AnalyticsPage() {
                     <p className="text-xs text-slate-500">{e.percent}%</p>
                   </div>
                   <div className="hidden sm:flex gap-2 text-xs text-slate-500 flex-shrink-0">
-                    <span className="badge-teal">A: {e.sectionA}/40</span>
-                    <span className="badge-blue">B: {e.sectionB}/40</span>
-                    <span className="badge-purple">C: {e.sectionC}/20</span>
+                    <span className="badge-teal">A: {e.sectionA}/{e.sectionATotal || 40}</span>
+                    {/* A subject can genuinely have no Section B (e.g. BECE
+                       Mathematics) — `?? 40` (not `|| 40`) so a real 0 isn't
+                       masked into a fake "0/40", and the badge is hidden
+                       entirely once that real 0 is known. */}
+                    {(e.sectionBTotal ?? 40) > 0 && (
+                      <span className="badge-blue">B: {e.sectionB}/{e.sectionBTotal ?? 40}</span>
+                    )}
+                    {/* A subject with no real Section B (e.g. BECE Mathematics)
+                       has its actual WAEC "Section B" in this app's sectionC
+                       bucket — label it "B" here instead of the internal "C". */}
+                    <span className="badge-purple">
+                      {(e.sectionBTotal ?? 40) === 0 ? 'B' : 'C'}: {e.sectionC}/{e.sectionCTotal || 20}
+                    </span>
                   </div>
                 </div>
               ))

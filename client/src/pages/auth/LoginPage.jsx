@@ -1,13 +1,25 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { GraduationCap, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'
+import { GraduationCap, Mail, Lock, ArrowRight, Eye, EyeOff, UserCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
+import examHallBg from '../../assets/exam-hall-bg.jpg'
+
+// One page for all three roles instead of three separate login pages
+// (which is exactly what caused sessions to silently overwrite each
+// other across tabs) — the dropdown just decides which auth endpoint
+// and landing page to use.
+const ROLES = {
+  student: { login: 'login',        home: '/dashboard', label: 'Student' },
+  teacher: { login: 'teacherLogin', home: '/teacher',    label: 'Teacher' },
+  admin:   { login: 'adminLogin',   home: '/admin',      label: 'Admin'   },
+}
 
 export default function LoginPage() {
-  const { login } = useAuth()
-  const navigate   = useNavigate()
+  const auth     = useAuth()
+  const navigate = useNavigate()
 
+  const [role,    setRole]    = useState('student')
   const [form,    setForm]    = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
@@ -19,9 +31,10 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true); setError('')
     try {
-      await login(form)
+      const { login: loginFnName, home } = ROLES[role]
+      await auth[loginFnName](form)
       toast.success('Welcome back!')
-      navigate('/dashboard')
+      navigate(home)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -33,9 +46,16 @@ export default function LoginPage() {
     <div className="min-h-screen flex" style={{ background: 'var(--color-bg)' }}>
 
       {/* ── Left branding panel — desktop only ───────────── */}
+      {/* Photo sits behind the dark gradient here, not the form side —
+         this panel has no text inputs to keep readable, so the image can
+         be shown much more visibly than the app's usual subtle texture. */}
       <div
         className="hidden lg:flex flex-col justify-between w-[420px] flex-shrink-0 p-10"
-        style={{ background: 'linear-gradient(160deg, #134E4A 0%, #0D3B37 60%, #0a2e2b 100%)' }}
+        style={{
+          backgroundImage: `linear-gradient(160deg, rgba(19,78,74,0.82) 0%, rgba(13,59,55,0.85) 60%, rgba(10,46,43,0.9) 100%), url(${examHallBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
       >
         {/* Logo */}
         <div className="flex items-center gap-3">
@@ -132,6 +152,23 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
 
+            {/* Role */}
+            <div>
+              <label className="label">Signing in as</label>
+              <div className="relative">
+                <UserCircle className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <select
+                  value={role}
+                  onChange={e => { setError(''); setRole(e.target.value) }}
+                  className="input pl-10"
+                >
+                  {Object.entries(ROLES).map(([key, { label }]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Email */}
             <div>
               <label className="label">Email address</label>
@@ -179,8 +216,11 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-slate-500 mt-6">
             Don't have an account?{' '}
-            <Link to="/register" className="text-teal-600 font-medium hover:text-teal-700 transition-colors">
-              Create one free
+            <Link
+              to={role === 'admin' ? '/admin/register' : '/register'}
+              className="text-teal-600 font-medium hover:text-teal-700 transition-colors"
+            >
+              {role === 'admin' ? 'Enter an admin invite code' : 'Create one free'}
             </Link>
           </p>
         </div>

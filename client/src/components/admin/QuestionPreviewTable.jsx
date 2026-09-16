@@ -1,12 +1,17 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, Trash2, AlertTriangle } from 'lucide-react'
 import { AI_RISK_SUBJECTS } from '../../constants/subjects'
+import QuestionDiagram from '../QuestionDiagram'
 
 // ── QuestionPreviewTable ───────────────────────────────────────
 // Shows AI-generated or PDF-extracted questions for admin review.
 // Admin can select, edit, or delete individual questions before
 // approving the final set to be saved to MongoDB.
-export default function QuestionPreviewTable({ previews, onApprove, onCancel }) {
+// `onReject` is optional — pass it when `previews` are already persisted
+// in the DB (e.g. the review queue) so removing a row here also deletes
+// it server-side. Omitted by the ephemeral generate/PDF flows, where
+// nothing is saved until approval anyway.
+export default function QuestionPreviewTable({ previews, onApprove, onCancel, onReject }) {
   const [selected,  setSelected]  = useState(() => new Set(previews.map(q => q.previewId)))
   const [questions, setQuestions] = useState(previews)
   const [expanded,  setExpanded]  = useState(null)
@@ -40,6 +45,7 @@ export default function QuestionPreviewTable({ previews, onApprove, onCancel }) 
   const deleteQuestion = (id) => {
     setQuestions(p => p.filter(q => q.previewId !== id))
     setSelected(p => { const n = new Set(p); n.delete(id); return n })
+    if (onReject) onReject(id)
   }
 
   const editField = (id, field, value) => {
@@ -144,8 +150,19 @@ export default function QuestionPreviewTable({ previews, onApprove, onCancel }) 
                   <span className="badge-gray">{q.marks}m</span>
                   {q.isAIGenerated   && <span className="badge-amber">AI generated</span>}
                   {q.isPDFExtracted  && <span className="badge-green">PDF extracted</span>}
+                  <span className={q.questionSource === 'practice' ? 'badge-gray' : 'badge-blue'}>
+                    {q.questionSource === 'practice' ? 'Practice' : 'Past paper'}
+                  </span>
                   {q.topic           && <span className="badge-teal">{q.topic}</span>}
+                  {q.hasImage        && <span className="badge-purple">📊 has diagram</span>}
+                  {q.topicNeedsReview && (
+                    <span className="badge-red" title="Didn't confidently match a syllabus topic — check before saving">
+                      ⚠ topic needs review
+                    </span>
+                  )}
                 </div>
+
+                <QuestionDiagram hasImage={q.hasImage} imageData={q.imageData} />
 
                 {/* Editable question text */}
                 <textarea

@@ -1,22 +1,52 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { GraduationCap, User, Mail, Lock, School, ArrowRight, Check } from 'lucide-react'
+import { GraduationCap, User, Mail, Lock, School, ArrowRight, Check, Eye, EyeOff, Users, KeyRound } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { SUBJECTS_WASSCE, SUBJECTS_BECE, getPickerTiles } from '../../constants/subjects'
 
 export default function RegisterPage() {
-  const { register } = useAuth()
+  const { register, teacherRegister } = useAuth()
   const navigate      = useNavigate()
 
+  // Student is the full 2-step wizard below, unchanged. Teacher swaps
+  // in a single short form (see the accountType === 'teacher' branch)
+  // — folded into this one page, along with the old /teacher/register,
+  // so there's a single entry point instead of two separate pages.
+  // Admin account creation stays on its own separate /admin/register
+  // page, deliberately not merged here.
+  const [accountType, setAccountType] = useState('student')
+
   const [form, setForm] = useState({
-    fullName: '', email: '', password: '',
+    fullName: '', email: '', password: '', confirmPassword: '',
     school: '', examType: 'WASSCE', subjects: [],
   })
+  const [teacherForm, setTeacherForm] = useState({ fullName: '', email: '', password: '', inviteCode: '' })
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
   const [step,    setStep]    = useState(1) // 1 = personal details, 2 = exam + subjects
   const [openGroup, setOpenGroup] = useState(null) // which group tile (e.g. 'Ghanaian Language') is expanded
+  const [showPw,        setShowPw]        = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
+
+  const handleTeacherChange = (e) => {
+    setError('')
+    setTeacherForm(p => ({ ...p, [e.target.name]: e.target.value }))
+  }
+
+  const handleTeacherSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true); setError('')
+    try {
+      await teacherRegister(teacherForm)
+      toast.success('Teacher account created!')
+      navigate('/teacher')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const subjects = form.examType === 'WASSCE' ? SUBJECTS_WASSCE : SUBJECTS_BECE
   const tiles     = getPickerTiles(subjects)
@@ -46,8 +76,14 @@ export default function RegisterPage() {
   }
 
   const goToStep2 = () => {
-    if (!form.fullName || !form.email || !form.password) {
+    if (!form.fullName || !form.email || !form.password || !form.confirmPassword) {
       return setError('Please fill in all required fields')
+    }
+    if (form.password.length < 6) {
+      return setError('Password must be at least 6 characters')
+    }
+    if (form.password !== form.confirmPassword) {
+      return setError('Passwords do not match')
     }
     setError('')
     setStep(2)
@@ -58,7 +94,8 @@ export default function RegisterPage() {
     if (form.subjects.length === 0) return setError('Select at least one subject')
     setLoading(true); setError('')
     try {
-      await register(form)
+      const { confirmPassword, ...payload } = form
+      await register(payload)
       toast.success('Welcome to EduPrepAI!')
       navigate('/dashboard')
     } catch (err) {
@@ -91,6 +128,91 @@ export default function RegisterPage() {
           </p>
         </div>
 
+        {/* Account type toggle */}
+        <div className="flex gap-2 mb-6 bg-slate-100 rounded-xl p-1">
+          {[
+            { key: 'student', label: 'Student', icon: GraduationCap },
+            { key: 'teacher', label: 'Teacher', icon: Users },
+          ].map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => { setError(''); setAccountType(key) }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                accountType === key ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Icon className="w-4 h-4" /> {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ══════════════ TEACHER FORM (single step) ═══════════ */}
+        {accountType === 'teacher' && (
+          <div className="card shadow-md">
+            {error && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-5 text-sm">
+                <span className="flex-shrink-0 mt-0.5">⚠</span> {error}
+              </div>
+            )}
+            <form onSubmit={handleTeacherSubmit} className="space-y-4">
+              <div>
+                <label className="label">Full name</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text" name="fullName" value={teacherForm.fullName}
+                    onChange={handleTeacherChange} required placeholder="e.g. Ama Boateng"
+                    className="input pl-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="label">Email address</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="email" name="email" value={teacherForm.email}
+                    onChange={handleTeacherChange} required placeholder="teacher@example.com"
+                    className="input pl-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="label">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="password" name="password" value={teacherForm.password}
+                    onChange={handleTeacherChange} required placeholder="At least 6 characters"
+                    className="input pl-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="label">Invite code</label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text" name="inviteCode" value={teacherForm.inviteCode}
+                    onChange={handleTeacherChange} required placeholder="Provided by your school"
+                    className="input pl-10"
+                  />
+                </div>
+              </div>
+              <button type="submit" disabled={loading} className="btn-primary w-full py-3">
+                {loading
+                  ? <><span className="spinner border-white/40 border-t-white" /> Creating…</>
+                  : <>Create teacher account <ArrowRight className="w-4 h-4" /></>
+                }
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ══════════════ STUDENT FORM (2-step wizard) ═════════ */}
+        {accountType === 'student' && (
+        <>
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-7">
           {[1, 2].map((s, i) => (
@@ -153,10 +275,40 @@ export default function RegisterPage() {
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
-                    type="password" name="password" value={form.password}
+                    type={showPw ? 'text' : 'password'}
+                    name="password" value={form.password}
                     onChange={handleChange} required placeholder="At least 6 characters"
-                    className="input pl-10"
+                    className="input pl-10 pr-10"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(p => !p)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    aria-label={showPw ? 'Hide password' : 'Show password'}
+                  >
+                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Confirm password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type={showConfirmPw ? 'text' : 'password'}
+                    name="confirmPassword" value={form.confirmPassword}
+                    onChange={handleChange} required placeholder="Re-enter your password"
+                    className="input pl-10 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPw(p => !p)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    aria-label={showConfirmPw ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -318,6 +470,8 @@ export default function RegisterPage() {
             </form>
           )}
         </div>
+        </>
+        )}
 
         <p className="text-center text-sm text-slate-500 mt-5">
           Already have an account?{' '}

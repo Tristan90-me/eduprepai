@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate }      from 'react-router-dom'
 import { useAuth }          from '../../context/AuthContext'
+import { useNotifications } from '../../context/NotificationContext'
 import { mockExamAPI }      from '../../api/mockExam.api'
 import AppShell             from '../../components/layout/AppShell'
 import ExamCoverPage        from '../../components/exam/ExamCoverPage'
@@ -7,10 +9,11 @@ import ExamTimer            from '../../components/exam/ExamTimer'
 import ExamSectionA         from '../../components/exam/ExamSectionA'
 import ExamSectionB         from '../../components/exam/ExamSectionB'
 import ExamSectionC         from '../../components/exam/ExamSectionC'
-import ExamResultCard       from '../../components/exam/ExamResultCard'
+import MockExamReview       from '../../components/exam/MockExamReview'
 import { BookOpen, ChevronRight, Send, AlertTriangle, History } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getSubjectsForExamType } from '../../constants/subjects'
+import { gradeBadgeBucket } from '../../utils/gradeUtils'
 
 // ── MockExamPage ───────────────────────────────────────────────
 // Four internal screens:
@@ -20,6 +23,8 @@ import { getSubjectsForExamType } from '../../constants/subjects'
 // 'results'  → marked results + examiner feedback
 export default function MockExamPage() {
   const { user } = useAuth()
+  const navigate  = useNavigate()
+  const { addBadgeNotifications } = useNotifications()
 
   // ── Screen state ───────────────────────────────────────────
   const [screen, setScreen] = useState('setup')
@@ -42,8 +47,8 @@ export default function MockExamPage() {
   // ── Answers — stored locally, auto-saved to server ─────────
   const [answersA, setAnswersA] = useState({})   // { questionIndex: 'A'|'B'|'C'|'D' }
   const [answersB, setAnswersB] = useState({})   // { questionIndex: 'text...' }
-  const [answerCIdx, setAnswerCIdx] = useState(null)  // which essay chosen
-  const [answerC,    setAnswerC]    = useState('')    // essay text
+  const [answerCIndices, setAnswerCIndices] = useState([])  // which essay(s) chosen
+  const [answersC,       setAnswersC]       = useState({})  // { questionIndex: 'text...' }
 
   // ── Results ─────────────────────────────────────────────────
   const [results, setResults] = useState(null)
@@ -71,8 +76,8 @@ export default function MockExamPage() {
       // Reset answers
       setAnswersA({})
       setAnswersB({})
-      setAnswerCIdx(null)
-      setAnswerC('')
+      setAnswerCIndices([])
+      setAnswersC({})
       setScreen('cover')
 
       if (data.resumed) {
@@ -85,7 +90,10 @@ export default function MockExamPage() {
           if (q.studentAnswer) setAnswersB(p => ({ ...p, [i]: q.studentAnswer }))
         })
         data.exam.sectionC.forEach((q, i) => {
-          if (q.studentAnswer) { setAnswerCIdx(i); setAnswerC(q.studentAnswer) }
+          if (q.studentAnswer) {
+            setAnswerCIndices(prev => [...prev, i])
+            setAnswersC(prev => ({ ...prev, [i]: q.studentAnswer }))
+          }
         })
       }
     } catch (err) {
@@ -137,21 +145,25 @@ export default function MockExamPage() {
     }, 1500)
   }, [exam?._id])
 
-  const handleAnswerC = useCallback((text) => {
-    setAnswerC(text)
+  const handleToggleC = useCallback((idx) => {
+    setAnswerCIndices(prev =>
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    )
+  }, [])
+
+  const handleAnswerC = useCallback((idx, text) => {
+    setAnswersC(prev => ({ ...prev, [idx]: text }))
     clearTimeout(autoSaveRef.current)
     autoSaveRef.current = setTimeout(async () => {
-      if (answerCIdx !== null) {
-        try {
-          await mockExamAPI.saveAnswer(exam._id, {
-            section:       'sectionC',
-            questionIndex: answerCIdx,
-            studentAnswer: text,
-          })
-        } catch { /* silent */ }
-      }
+      try {
+        await mockExamAPI.saveAnswer(exam._id, {
+          section:       'sectionC',
+          questionIndex: idx,
+          studentAnswer: text,
+        })
+      } catch { /* silent */ }
     }, 1500)
-  }, [exam?._id, answerCIdx])
+  }, [exam?._id])
 
   // ── Submit paper ───────────────────────────────────────────
   const handleSubmit = async () => {
@@ -163,9 +175,7 @@ export default function MockExamPage() {
       // Build final answer arrays
       const sectionAAnswers = exam.sectionA.map((_, i) => answersA[i] || '')
       const sectionBAnswers = exam.sectionB.map((_, i) => answersB[i] || '')
-      const sectionCAnswers = exam.sectionC.map((_, i) =>
-        i === answerCIdx ? answerC : ''
-      )
+      const sectionCAnswers = exam.sectionC.map((_, i) => answersC[i] || '')
 
       const timeSpent = exam.startedAt
         ? Math.round((Date.now() - new Date(exam.startedAt).getTime()) / 1000)
@@ -181,6 +191,7 @@ export default function MockExamPage() {
       })
 
       toast.success('Paper marked!', { id: 'marking' })
+      addBadgeNotifications(data.newBadges)
 
       // Reload full exam to get marked version
       const markedData = await mockExamAPI.getExam(exam._id)
@@ -197,11 +208,16 @@ export default function MockExamPage() {
   // ── Answer counts for submit confirmation ──────────────────
   const aAnswered = Object.values(answersA).filter(Boolean).length
   const bAnswered = Object.values(answersB).filter(a => a?.trim()).length
-  const cAnswered = answerC.trim().length > 0 ? 1 : 0
+  const cAnswered = Object.values(answersC).filter(a => a?.trim()).length
 
   // ── Completeness summary ───────────────────────────────────
   const totalAnswered = aAnswered + bAnswered + cAnswered
   const totalQuestions = (exam?.sectionA?.length || 0) + (exam?.sectionB?.length || 0) + 1
+
+  // A subject with no real Section B at all (e.g. BECE Mathematics) has
+  // its actual WAEC "Section B" living in this app's sectionC bucket —
+  // label it "Section B" for the student instead of the internal "C".
+  const sectionCLabel = exam?.sectionB?.length === 0 ? 'B' : 'C'
 
   // ─────────────────────────────────────────────────────────────
   return (
@@ -255,11 +271,15 @@ export default function MockExamPage() {
                   What you'll get
                 </p>
                 <div className="grid grid-cols-3 gap-3 text-xs text-slate-600">
-                  {[
+                  {(examType === 'BECE' && subject === 'Computing' ? [
+                    { label: 'Section A', detail: '40 MCQ questions' },
+                    { label: 'Section B', detail: '1 compulsory question (24 marks)' },
+                    { label: 'Section C', detail: '3 essays (choose from 4)' },
+                  ] : [
                     { label: 'Section A', detail: '40 MCQ questions' },
                     { label: 'Section B', detail: '4 structured questions' },
                     { label: 'Section C', detail: '1 essay (choose from 2)' },
-                  ].map(({ label, detail }) => (
+                  ]).map(({ label, detail }) => (
                     <div key={label} className="text-center">
                       <p className="font-semibold text-slate-800">{label}</p>
                       <p className="text-slate-500 mt-0.5">{detail}</p>
@@ -289,7 +309,13 @@ export default function MockExamPage() {
                 </h2>
                 <div className="space-y-2.5">
                   {pastExams.slice(0, 5).map(e => (
-                    <div key={e._id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <div
+                      key={e._id}
+                      onClick={() => e.status === 'marked' && navigate(`/mock-exam/${e._id}/review`)}
+                      className={`flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors ${
+                        e.status === 'marked' ? 'cursor-pointer' : ''
+                      }`}
+                    >
                       <div>
                         <p className="text-sm font-medium text-slate-800">{e.subject}</p>
                         <p className="text-xs text-slate-500">
@@ -311,7 +337,7 @@ export default function MockExamPage() {
                         </p>
                       </div>
                       {e.status === 'marked' && (
-                        <span className={`badge-${['A1','B2','B3'].includes(e.results?.waecGrade) ? 'green' : ['C4','C5','C6'].includes(e.results?.waecGrade) ? 'teal' : 'red'}`}>
+                        <span className={`badge-${gradeBadgeBucket(e.results?.waecGrade, e.examType)}`}>
                           {e.results?.waecGrade}
                         </span>
                       )}
@@ -344,8 +370,12 @@ export default function MockExamPage() {
                 {[
                   { key: 'A', label: 'Section A', count: aAnswered, total: exam.sectionA.length },
                   { key: 'B', label: 'Section B', count: bAnswered, total: exam.sectionB.length },
-                  { key: 'C', label: 'Section C', count: cAnswered, total: 1 },
-                ].map(({ key, label, count, total }) => (
+                  { key: 'C', label: `Section ${sectionCLabel}`, count: cAnswered, total: exam.sectionCAnswerCount || 1 },
+                ]
+                  // A subject can genuinely have no Section B at all (e.g.
+                  // BECE Mathematics) — don't show a dead "0/0" tab for it.
+                  .filter(({ key, total }) => key !== 'B' || total > 0)
+                  .map(({ key, label, count, total }) => (
                   <button
                     key={key}
                     onClick={() => setActiveSection(key)}
@@ -394,9 +424,9 @@ export default function MockExamPage() {
                       Submit your paper?
                     </p>
                     <p className="text-xs text-amber-700 mt-1">
-                      You have answered {aAnswered}/{exam.sectionA.length} MCQ,{' '}
-                      {bAnswered}/{exam.sectionB.length} structured, and{' '}
-                      {cAnswered}/1 essay question.
+                      You have answered {aAnswered}/{exam.sectionA.length} MCQ
+                      {exam.sectionB.length > 0 && <>, {bAnswered}/{exam.sectionB.length} structured</>}, and{' '}
+                      {cAnswered}/{exam.sectionCAnswerCount || 1} Section {sectionCLabel} question{(exam.sectionCAnswerCount || 1) > 1 ? 's' : ''}.
                       This cannot be undone.
                     </p>
                   </div>
@@ -439,10 +469,12 @@ export default function MockExamPage() {
             {activeSection === 'C' && (
               <ExamSectionC
                 questions={exam.sectionC}
-                selectedQuestion={answerCIdx}
-                answer={answerC}
-                onSelectQuestion={setAnswerCIdx}
-                onAnswer={handleAnswerC}
+                answerCount={exam.sectionCAnswerCount || 1}
+                selectedIndices={answerCIndices}
+                answers={answersC}
+                onToggleQuestion={handleToggleC}
+                onAnswerChange={handleAnswerC}
+                sectionLabel={sectionCLabel}
               />
             )}
 
@@ -461,67 +493,8 @@ export default function MockExamPage() {
         )}
 
         {/* ══════════════ RESULTS SCREEN ══════════════════════ */}
-        {screen === 'results' && results && (
-          <>
-            {/* Review tabs appear above results */}
-            <div className="flex gap-2 mb-5">
-              {['Results', 'Review A', 'Review B', 'Review C'].map((tab, i) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveSection(i === 0 ? 'results' : ['A', 'B', 'C'][i - 1])}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition-all ${
-                    (i === 0 && activeSection === 'results') ||
-                    (i > 0 && activeSection === ['A', 'B', 'C'][i - 1])
-                      ? 'bg-teal-600 text-white border-teal-600'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-
-            {activeSection === 'results' && (
-              <ExamResultCard
-                results={results}
-                subject={subject}
-                examType={examType}
-                onRetake={() => setScreen('setup')}
-              />
-            )}
-
-            {activeSection === 'A' && markedExam && (
-              <ExamSectionA
-                questions={markedExam.sectionA}
-                answers={answersA}
-                onAnswer={() => {}}
-                isReview
-                markedQuestions={markedExam.sectionA}
-              />
-            )}
-
-            {activeSection === 'B' && markedExam && (
-              <ExamSectionB
-                questions={markedExam.sectionB}
-                answers={answersB}
-                onAnswer={() => {}}
-                isReview
-                markedQuestions={markedExam.sectionB}
-              />
-            )}
-
-            {activeSection === 'C' && markedExam && (
-              <ExamSectionC
-                questions={markedExam.sectionC}
-                selectedQuestion={answerCIdx}
-                answer={answerC}
-                onSelectQuestion={() => {}}
-                onAnswer={() => {}}
-                isReview
-                markedQuestions={markedExam.sectionC}
-              />
-            )}
-          </>
+        {screen === 'results' && results && markedExam && (
+          <MockExamReview exam={markedExam} onRetake={() => setScreen('setup')} />
         )}
 
       </div>

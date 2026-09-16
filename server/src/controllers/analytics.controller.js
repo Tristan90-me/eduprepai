@@ -60,6 +60,7 @@ export const getOverview = asyncHandler(async (req, res) => {
 
   // ── Mock exam history ──────────────────────────────────────
   const mockHistory = mockExams.map(e => ({
+    examId:    e._id,
     subject:   e.subject,
     examType:  e.examType,
     grade:     e.results?.waecGrade,
@@ -69,6 +70,13 @@ export const getOverview = asyncHandler(async (req, res) => {
     sectionA:  e.results?.sectionAMarks,
     sectionB:  e.results?.sectionBMarks,
     sectionC:  e.results?.sectionCMarks,
+    // `??`, not `||` — a subject can genuinely have a real 0 total for a
+    // section (e.g. BECE Mathematics has no Section B at all), which
+    // must survive as 0, not get masked into a fake "40". `??` only
+    // falls back for actually-missing data (old exams predating this field).
+    sectionATotal: e.results?.sectionATotal ?? 40,
+    sectionBTotal: e.results?.sectionBTotal ?? 40,
+    sectionCTotal: e.results?.sectionCTotal ?? 20,
   }))
 
   // ── Curriculum coverage ────────────────────────────────────
@@ -98,6 +106,20 @@ export const getOverview = asyncHandler(async (req, res) => {
   })
 })
 
+// ── Helper: star rating from accuracy ──────────────────────────
+// The leaderboard shows a quality rating instead of a raw numeric
+// position — a student's placement in the list no longer needs a
+// number attached to it, but their accuracy tier is still worth
+// communicating (and is kinder to students further down the list
+// than a bare "#47" would be).
+const getStarRating = (accuracy) => {
+  if (accuracy >= 90) return 5
+  if (accuracy >= 75) return 4
+  if (accuracy >= 60) return 3
+  if (accuracy >= 40) return 2
+  return 1
+}
+
 // ── GET /api/analytics/leaderboard ────────────────────────────
 // Global leaderboard — top students by total questions answered
 // and accuracy. Anonymised to show first name only.
@@ -113,36 +135,35 @@ export const getLeaderboard = asyncHandler(async (req, res) => {
   .select('fullName school examType totalQuestionsAnswered totalCorrect streak badges')
   .lean()
 
-  const ranked = leaderboard.map((u, idx) => ({
-    rank:      idx + 1,
-    name:      u.fullName?.split(' ')[0] + ' ' + (u.fullName?.split(' ')[1]?.charAt(0) || '') + '.',
-    school:    u.school || 'Unknown school',
-    examType:  u.examType,
-    questions: u.totalQuestionsAnswered,
-    accuracy:  u.totalQuestionsAnswered > 0
+  const ranked = leaderboard.map((u, idx) => {
+    const accuracy = u.totalQuestionsAnswered > 0
       ? Math.round((u.totalCorrect / u.totalQuestionsAnswered) * 100)
-      : 0,
-    streak:    u.streak || 0,
-    badges:    u.badges?.length || 0,
-    isCurrentUser: u._id.toString() === req.user._id.toString(),
-  }))
+      : 0
+    return {
+      rank:      idx + 1,   // kept internally for podium ordering — not shown as a number in the UI
+      name:      u.fullName?.split(' ')[0] + ' ' + (u.fullName?.split(' ')[1]?.charAt(0) || '') + '.',
+      school:    u.school || 'Unknown school',
+      examType:  u.examType,
+      questions: u.totalQuestionsAnswered,
+      accuracy,
+      rating:    getStarRating(accuracy),
+      streak:    u.streak || 0,
+      badges:    u.badges?.length || 0,
+      isCurrentUser: u._id.toString() === req.user._id.toString(),
+    }
+  })
 
-  // Find current user's position if not in top N
-  const userInList = ranked.find(u => u.isCurrentUser)
-  let currentUserRank = null
-
-  if (!userInList) {
-    const betterCount = await User.countDocuments({
-      role: 'student',
-      totalQuestionsAnswered: { $gt: req.user.totalQuestionsAnswered || 0 },
-    })
-    currentUserRank = betterCount + 1
-  }
+  // Current user's own rating — shown even when they're outside the
+  // visible list, as a "your rating" banner rather than "your position".
+  const myAccuracy = req.user.totalQuestionsAnswered > 0
+    ? Math.round((req.user.totalCorrect / req.user.totalQuestionsAnswered) * 100)
+    : 0
+  const myRating = req.user.totalQuestionsAnswered > 0 ? getStarRating(myAccuracy) : null
 
   res.json({
     success: true,
     leaderboard: ranked,
-    currentUserRank: userInList ? userInList.rank : currentUserRank,
+    myRating,
   })
 })
 

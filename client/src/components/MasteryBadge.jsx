@@ -15,6 +15,19 @@ const getMasteryConfig = (score) => {
   return               { label: 'Mastered',     colour: 'bg-green-100 text-green-700',      bar: 'bg-green-500'  }
 }
 
+// ── scoreToStars ─────────────────────────────────────────────────
+// Same tier boundaries as getMasteryConfig above, expressed as a
+// 0-5 star rating for the Session Path UI — kept here so the two
+// never drift apart.
+export const scoreToStars = (score) => {
+  if (score === 0)  return 0
+  if (score < 30)   return 1
+  if (score < 55)   return 2
+  if (score < 75)   return 3
+  if (score < 90)   return 4
+  return 5
+}
+
 export default function MasteryBadge({ score = 0, size = 'sm', showLabel = true, showBar = false }) {
   const config = getMasteryConfig(score)
 

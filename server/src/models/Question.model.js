@@ -9,7 +9,8 @@ const questionSchema = new mongoose.Schema(
       enum: [
         'Mathematics',
         'English Language',
-        'Integrated Science',
+        'Integrated Science',   // WASSCE only — BECE now uses 'Science'
+        'Science',              // BECE only — new NaCCA JHS curriculum naming
         'Social Studies',
         'Physics',
         'Chemistry',
@@ -147,6 +148,69 @@ const questionSchema = new mongoose.Schema(
       default: true,   // admins can deactivate without deleting
     },
 
+    // Whether this question counts as real historical exam evidence.
+    // 'pastPaper' questions feed the prediction engine's statistical
+    // signals; 'practice' questions (AI-generated, or admin-marked
+    // supplementary content) are fully usable for practice/mock exams
+    // but excluded from prediction calculations — see prediction.controller.js.
+    questionSource: {
+      type: String,
+      enum: ['pastPaper', 'practice'],
+      default: 'pastPaper',
+    },
+
+    // Provenance flags. Previously used by the extraction/generation
+    // controllers but never actually declared here, so Mongoose's
+    // strict-mode schema silently stripped them on every insert —
+    // now declared so they persist correctly.
+    isAIGenerated: {
+      type: Boolean,
+      default: false,
+    },
+    isPDFExtracted: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Diagram support — imageData is a base64 PNG of the whole PDF
+    // page the question appeared on (not a cropped diagram; reliably
+    // isolating just the figure is a much harder problem for little
+    // added benefit). Set by the PDF Extractor when the AI flags a
+    // question as depending on a figure/graph/map it can see on the page.
+    hasImage: {
+      type: Boolean,
+      default: false,
+    },
+    imageData: {
+      type: String,
+      default: '',
+    },
+
+    // Set true for questions inserted by the batch PDF extractor —
+    // kept inactive (isActive: false) and hidden from students until
+    // an admin reviews and approves them via the Review Queue.
+    pendingReview: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Set when an AI extraction/generation couldn't confidently match
+    // the canonical syllabus topic list — flags the row for a closer
+    // look in the review queue instead of silently accepting a guess.
+    topicNeedsReview: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Provenance for questions pulled from an external source (e.g. a
+    // scraped past-question site) rather than typed/uploaded directly —
+    // lets an admin verify against the original during review.
+    sourceUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     addedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -162,7 +226,9 @@ const questionSchema = new mongoose.Schema(
 questionSchema.index({ subject: 1, topic: 1, year: 1 })
 questionSchema.index({ subject: 1, type: 1, difficulty: 1 })
 questionSchema.index({ examType: 1, subject: 1 })
+questionSchema.index({ examType: 1, subject: 1, questionSource: 1 })
 questionSchema.index({ topic: 1, year: 1 })
+questionSchema.index({ pendingReview: 1 })
 
 const Question = mongoose.model('Question', questionSchema)
 export default Question
