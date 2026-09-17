@@ -34,7 +34,7 @@ const TREND_CONFIG = {
   '-1': { icon: TrendingDown, colour: 'text-red-500',   label: 'Falling' },
 }
 
-export default function TopicCard({ prediction, subject }) {
+export default function TopicCard({ prediction, subject, hidePracticeCta = false }) {
   const navigate = useNavigate()
   const tier     = TIER_CONFIG[prediction.tier] || TIER_CONFIG.watch
   const trend    = TREND_CONFIG[prediction.trendDirection] || TREND_CONFIG[0]
@@ -161,15 +161,17 @@ export default function TopicCard({ prediction, subject }) {
         </div>
       )}
 
-      {/* ── Practice CTA ────────────────────────────────────── */}
-      <button
-        onClick={handlePractice}
-        className="mt-auto btn-primary w-full text-xs py-2.5 flex items-center justify-center gap-1.5"
-      >
-        <BookOpen className="w-3.5 h-3.5" />
-        Practice this topic
-        <ChevronRight className="w-3.5 h-3.5" />
-      </button>
+      {/* ── Practice CTA — student-only, admins have no practice history ── */}
+      {!hidePracticeCta && (
+        <button
+          onClick={handlePractice}
+          className="mt-auto btn-primary w-full text-xs py-2.5 flex items-center justify-center gap-1.5"
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          Practice this topic
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      )}
     </div>
   )
 }

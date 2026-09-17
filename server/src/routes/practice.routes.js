@@ -2,6 +2,8 @@ import { Router } from 'express'
 import {
   getPracticeQuestions,
   getTopicsWithMastery,
+  getSessionPath,
+  searchTopics,
   submitAnswer,
   getExplanation,
   saveSession,
@@ -16,10 +18,12 @@ const router = Router()
 router.use(protect)
 
 // ── Question fetching ──────────────────────────────────────────
-router.get('/questions', getPracticeQuestions)
-router.get('/topics',    getTopicsWithMastery)
-router.get('/mastery',   getMasteryProfile)
-router.get('/sessions',  getRecentSessions)
+router.get('/questions',      getPracticeQuestions)
+router.get('/topics',         getTopicsWithMastery)
+router.get('/session-path',   getSessionPath)
+router.get('/topics/search',  searchTopics)
+router.get('/mastery',        getMasteryProfile)
+router.get('/sessions',       getRecentSessions)
 
 // ── Answer submission ──────────────────────────────────────────
 // These are POST because they write data and trigger AI calls

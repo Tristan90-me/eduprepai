@@ -1,14 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Trophy, Target, Clock, TrendingUp, RotateCcw, BarChart2 } from 'lucide-react'
 import MasteryBadge from './MasteryBadge'
-
-// ── Grade colours ──────────────────────────────────────────────
-const gradeColour = (grade) => {
-  if (['A1','B2','B3'].includes(grade)) return 'text-green-600 bg-green-50 border-green-200'
-  if (['C4','C5','C6'].includes(grade)) return 'text-teal-600 bg-teal-50 border-teal-200'
-  if (['D7','E8'].includes(grade))       return 'text-amber-600 bg-amber-50 border-amber-200'
-  return 'text-red-600 bg-red-50 border-red-200'
-}
+import { gradeColour } from '../utils/gradeUtils'
 
 // ── SessionSummary ─────────────────────────────────────────────
 // Shown at the end of a practice session.
@@ -16,6 +9,7 @@ const gradeColour = (grade) => {
 export default function SessionSummary({
   subject,
   topic,
+  examType,
   totalMarks,
   availableMarks,
   accuracy,
@@ -47,7 +41,7 @@ export default function SessionSummary({
         <p className="text-slate-500 text-sm mb-4">marks scored</p>
 
         {grade && (
-          <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 font-bold text-lg ${gradeColour(grade.grade)}`}>
+          <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 font-bold text-lg ${gradeColour(grade.grade, examType)}`}>
             {grade.grade}
             <span className="text-sm font-medium opacity-70">{grade.label}</span>
           </div>

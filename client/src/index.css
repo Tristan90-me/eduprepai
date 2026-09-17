@@ -164,3 +164,25 @@
   50%       { opacity: 0.6; }
 }
 .animate-pulse-soft { animation: pulse-soft 1.5s ease-in-out infinite; }
+
+/* ── Admin portal theme ───────────────────────────────────────────
+   Every admin panel component (buttons, badges, cards, inputs) reuses
+   the same teal-branded utility classes as the student portal. Rather
+   than re-skin each admin file by hand, this redefines the teal color
+   ramp to indigo scoped under .admin-theme (AdminShell's root) — every
+   Tailwind teal-* utility anywhere inside references these same CSS
+   variables, so the whole admin surface retints at once. Nothing
+   outside .admin-theme is affected; the student portal keeps its own
+   teal branding untouched. */
+.admin-theme {
+  --color-teal-50:  #EEF2FF;
+  --color-teal-100: #E0E7FF;
+  --color-teal-200: #C7D2FE;
+  --color-teal-300: #A5B4FC;
+  --color-teal-400: #818CF8;
+  --color-teal-500: #6366F1;
+  --color-teal-600: #4F46E5;
+  --color-teal-700: #4338CA;
+  --color-teal-800: #3730A3;
+  --color-teal-900: #312E81;
+}

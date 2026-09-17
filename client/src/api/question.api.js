@@ -7,6 +7,10 @@ export const questionAPI = {
   // Get single question
   getById:       (id)     => api.get(`/questions/${id}`),
 
+  // Lazily fetch a question's diagram image — only called when a
+  // question flagged hasImage:true is actually being displayed
+  getImage:      (id)     => api.get(`/questions/${id}/image`),
+
   // Get all topics for a subject (used by practice & prediction)
   getTopics:     (params) => api.get('/questions/topics', { params }),
 

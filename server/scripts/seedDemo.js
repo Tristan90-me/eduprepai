@@ -39,6 +39,7 @@ const questionSchema = new mongoose.Schema({
   modelAnswer: String, explanation: String, parts: Array,
   isActive: { type: Boolean, default: true },
   isAIGenerated: { type: Boolean, default: true },
+  questionSource: { type: String, default: 'practice' },
 }, { timestamps: true })
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))

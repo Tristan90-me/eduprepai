@@ -11,8 +11,26 @@ const BLANK_CONFIG = {
   difficulty: 3, type: 'MCQ', count: 5,
 }
 
-export default function AIGeneratorPanel() {
-  const [config,   setConfig]   = useState(BLANK_CONFIG)
+// `onGenerate`/`onApprove` default to the admin question-bank flow;
+// the teacher portal's assignment builder passes its own (targeting
+// /teacher/generate-questions and accumulating into a draft list
+// instead of the shared bank) to reuse this whole component as-is.
+// `lockedSubject`/`lockedExamType` fix those fields instead of showing
+// pickers — used by the teacher flow, where the class already decides
+// them. `hideBankNotice` hides the admin-bank-specific messaging that
+// doesn't apply to assignment questions (which never enter the bank).
+export default function AIGeneratorPanel({
+  onGenerate = (config) => adminAPI.generateQuestions(config),
+  onApprove: onApproveProp,
+  lockedSubject,
+  lockedExamType,
+  hideBankNotice = false,
+}) {
+  const [config,   setConfig]   = useState(() => ({
+    ...BLANK_CONFIG,
+    subject:  lockedSubject  || BLANK_CONFIG.subject,
+    examType: lockedExamType || BLANK_CONFIG.examType,
+  }))
   const [loading,  setLoading]  = useState(false)
   const [previews, setPreviews] = useState(null)
 
@@ -25,7 +43,7 @@ export default function AIGeneratorPanel() {
     setLoading(true)
     setPreviews(null)
     try {
-      const data = await adminAPI.generateQuestions({
+      const data = await onGenerate({
         ...config,
         difficulty: Number(config.difficulty),
         count:      Number(config.count),
@@ -42,10 +60,14 @@ export default function AIGeneratorPanel() {
 
   const handleApprove = async (approved) => {
     try {
-      const data = await adminAPI.approveQuestions(approved)
-      toast.success(data.message)
+      if (onApproveProp) {
+        await onApproveProp(approved)
+      } else {
+        const data = await adminAPI.approveQuestions(approved)
+        toast.success(data.message)
+      }
       setPreviews(null)
-      setConfig(BLANK_CONFIG)
+      setConfig(p => ({ ...BLANK_CONFIG, subject: lockedSubject || p.subject, examType: lockedExamType || p.examType }))
     } catch (err) {
       toast.error(err.message)
     }
@@ -72,50 +94,66 @@ export default function AIGeneratorPanel() {
         </div>
       </div>
 
+      {/* AI-generated content is practice material, not real exam evidence —
+         it never counts toward topic predictions, no matter how closely it
+         mimics WAEC style. Still fully usable for practice sessions and
+         mock exams once approved. */}
+      {!hideBankNotice && (
+        <div className="bg-purple-50 border border-purple-100 rounded-lg p-3">
+          <p className="text-xs text-purple-700">
+            AI-generated questions are saved as <strong>practice content</strong> and are
+            excluded from topic predictions — only real past papers count as prediction evidence.
+          </p>
+        </div>
+      )}
+
       {/* Config form — hidden when previews are showing */}
       {!previews && (
         <div className="card space-y-4">
 
-          {/* Subject + exam type */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Subject</label>
-              <select name="subject" value={config.subject} onChange={handleChange} className="input">
-                {getSubjectsForExamType(config.examType)
-                  .filter(s => !GHANAIAN_LANGUAGES.includes(s))
-                  .map(s => <option key={s}>{s}</option>)}
-                {config.examType === 'BECE' && (
-                  <optgroup label="Ghanaian Language">
-                    {GHANAIAN_LANGUAGES.map(s => <option key={s}>{s}</option>)}
-                  </optgroup>
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="label">Exam type</label>
-              <div className="flex gap-2">
-                {['WASSCE', 'BECE'].map(t => (
-                  <button
-                    key={t} type="button"
-                    onClick={() => setConfig(p => ({
-                      ...p,
-                      examType: t,
-                      subject: getSubjectsForExamType(t).includes(p.subject)
-                        ? p.subject
-                        : getSubjectsForExamType(t)[0],
-                    }))}
-                    className={`flex-1 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
-                      config.examType === t
-                        ? 'bg-teal-600 text-white border-teal-600'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
+          {/* Subject + exam type — locked (not shown) when the caller
+             already fixed them, e.g. the teacher flow's selected class */}
+          {!lockedSubject && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Subject</label>
+                <select name="subject" value={config.subject} onChange={handleChange} className="input">
+                  {getSubjectsForExamType(config.examType)
+                    .filter(s => !GHANAIAN_LANGUAGES.includes(s))
+                    .map(s => <option key={s}>{s}</option>)}
+                  {config.examType === 'BECE' && (
+                    <optgroup label="Ghanaian Language">
+                      {GHANAIAN_LANGUAGES.map(s => <option key={s}>{s}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="label">Exam type</label>
+                <div className="flex gap-2">
+                  {['WASSCE', 'BECE'].map(t => (
+                    <button
+                      key={t} type="button"
+                      onClick={() => setConfig(p => ({
+                        ...p,
+                        examType: t,
+                        subject: getSubjectsForExamType(t).includes(p.subject)
+                          ? p.subject
+                          : getSubjectsForExamType(t)[0],
+                      }))}
+                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
+                        config.examType === t
+                          ? 'bg-teal-600 text-white border-teal-600'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Topic + subtopic */}
           <div className="grid grid-cols-2 gap-4">
@@ -140,7 +178,7 @@ export default function AIGeneratorPanel() {
           </div>
 
           {/* Type / difficulty / year / count */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="label">Type</label>
               <select name="type" value={config.type} onChange={handleChange} className="input">

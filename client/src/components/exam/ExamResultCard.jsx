@@ -1,13 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Trophy, RotateCcw, TrendingUp, FileText } from 'lucide-react'
-
-// ── Grade colour map ───────────────────────────────────────────
-const gradeColour = (grade) => {
-  if (['A1', 'B2', 'B3'].includes(grade)) return 'text-green-700 bg-green-50 border-green-300'
-  if (['C4', 'C5', 'C6'].includes(grade)) return 'text-teal-700 bg-teal-50 border-teal-300'
-  if (['D7', 'E8'].includes(grade))       return 'text-amber-700 bg-amber-50 border-amber-300'
-  return 'text-red-700 bg-red-50 border-red-300'
-}
+import { gradeColour } from '../../utils/gradeUtils'
 
 // ── ExamResultCard ─────────────────────────────────────────────
 // Full results screen shown after the exam is marked.
@@ -16,9 +9,15 @@ export default function ExamResultCard({ results, subject, examType, onRetake })
 
   const {
     sectionAMarks, sectionBMarks, sectionCMarks,
+    sectionATotal = 40, sectionBTotal = 40, sectionCTotal = 20,
     totalMarks, availableMarks, percent,
     waecGrade, gradeLabel, examinerComment,
   } = results
+
+  // A subject with no real Section B at all (e.g. BECE Mathematics) has
+  // its actual WAEC "Section B" living in this app's sectionC bucket —
+  // label it "Section B" for the student instead of the internal "C".
+  const sectionCLabel = sectionBTotal === 0 ? 'B' : 'C'
 
   return (
     <div className="max-w-2xl mx-auto space-y-5 animate-fade-in">
@@ -42,7 +41,7 @@ export default function ExamResultCard({ results, subject, examType, onRetake })
 
         <p className="text-slate-500 text-sm mb-5">{percent}% — {gradeLabel}</p>
 
-        <div className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl border-2 font-bold text-2xl ${gradeColour(waecGrade)}`}>
+        <div className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl border-2 font-bold text-2xl ${gradeColour(waecGrade, examType)}`}>
           {waecGrade}
           <span className="text-base font-medium opacity-70">{gradeLabel}</span>
         </div>
@@ -53,10 +52,15 @@ export default function ExamResultCard({ results, subject, examType, onRetake })
         <h3 className="section-title">Section breakdown</h3>
         <div className="space-y-3">
           {[
-            { label: 'Section A — MCQ',        marks: sectionAMarks, total: 40, colour: 'bg-teal-500'   },
-            { label: 'Section B — Structured', marks: sectionBMarks, total: 40, colour: 'bg-blue-500'   },
-            { label: 'Section C — Essay',      marks: sectionCMarks, total: 20, colour: 'bg-purple-500' },
-          ].map(({ label, marks, total, colour }) => (
+            { label: 'Section A — MCQ',        marks: sectionAMarks, total: sectionATotal, colour: 'bg-teal-500'   },
+            { label: 'Section B — Structured', marks: sectionBMarks, total: sectionBTotal, colour: 'bg-blue-500'   },
+            { label: `Section ${sectionCLabel} — Essay`, marks: sectionCMarks, total: sectionCTotal, colour: 'bg-purple-500' },
+          ]
+            // A subject can genuinely have no questions in a section
+            // (e.g. BECE Mathematics has no Section B at all) — skip it
+            // rather than showing a meaningless "0/0 (NaN%)" row.
+            .filter(({ total }) => total > 0)
+            .map(({ label, marks, total, colour }) => (
             <div key={label}>
               <div className="flex justify-between text-sm mb-1.5">
                 <span className="font-medium text-slate-700">{label}</span>

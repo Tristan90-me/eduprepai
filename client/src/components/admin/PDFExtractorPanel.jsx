@@ -5,10 +5,29 @@ import { FileSearch, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getSubjectsForExamType, GHANAIAN_LANGUAGES } from '../../constants/subjects'
 
-export default function PDFExtractorPanel() {
+// `onExtract`/`onApprove` default to the admin question-bank flow; the
+// teacher portal's assignment builder passes its own (targeting
+// /teacher/extract-pdf and accumulating into a draft list instead of
+// the shared bank). `lockedSubject`/`lockedExamType` fix those fields
+// (hiding the pickers) when the caller already knows them — e.g. the
+// teacher flow's selected class. `hideQuestionSource` hides the
+// past-paper-vs-practice toggle, meaningless for assignment questions
+// that never enter the shared bank/predictions.
+export default function PDFExtractorPanel({
+  onExtract = (data) => adminAPI.extractFromPDF(data),
+  onApprove: onApproveProp,
+  lockedSubject,
+  lockedExamType,
+  hideQuestionSource = false,
+}) {
   const fileRef = useRef(null)
 
-  const [meta,     setMeta]     = useState({ subject: 'Mathematics', examType: 'WASSCE', year: 2023 })
+  const [meta,     setMeta]     = useState({
+    subject:  lockedSubject  || 'Mathematics',
+    examType: lockedExamType || 'WASSCE',
+    year: 2023,
+    questionSource: 'pastPaper',
+  })
   const [file,     setFile]     = useState(null)
   const [loading,  setLoading]  = useState(false)
   const [previews, setPreviews] = useState(null)
@@ -34,11 +53,12 @@ export default function PDFExtractorPanel() {
         reader.readAsDataURL(file)
       })
 
-      const data = await adminAPI.extractFromPDF({
+      const data = await onExtract({
         pdfBase64: base64,
         subject:   meta.subject,
         examType:  meta.examType,
         year:      Number(meta.year),
+        questionSource: meta.questionSource,
       })
 
       setPreviews(data.previews)
@@ -52,8 +72,12 @@ export default function PDFExtractorPanel() {
 
   const handleApprove = async (approved) => {
     try {
-      const data = await adminAPI.approveQuestions(approved)
-      toast.success(data.message)
+      if (onApproveProp) {
+        await onApproveProp(approved)
+      } else {
+        const data = await adminAPI.approveQuestions(approved)
+        toast.success(data.message)
+      }
       setPreviews(null)
       setFile(null)
       if (fileRef.current) fileRef.current.value = ''
@@ -86,45 +110,52 @@ export default function PDFExtractorPanel() {
       {!previews && (
         <div className="card space-y-4">
 
-          {/* Metadata */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Metadata — subject/exam type hidden when the caller already
+             fixed them (teacher flow's selected class) */}
+          <div className={`grid gap-4 ${lockedSubject ? 'grid-cols-1' : 'grid-cols-3'}`}>
+            {!lockedSubject && (
+              <>
+                <div>
+                  <label className="label">Subject</label>
+                  <select
+                    value={meta.subject}
+                    onChange={e => setMeta(p => ({ ...p, subject: e.target.value }))}
+                    className="input"
+                  >
+                    {getSubjectsForExamType(meta.examType)
+                      .filter(s => !GHANAIAN_LANGUAGES.includes(s))
+                      .map(s => <option key={s}>{s}</option>)}
+                    {meta.examType === 'BECE' && (
+                      <optgroup label="Ghanaian Language">
+                        {GHANAIAN_LANGUAGES.map(s => <option key={s}>{s}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Exam type</label>
+                  <select
+                    value={meta.examType}
+                    onChange={e => setMeta(p => {
+                      const nextSubjects = getSubjectsForExamType(e.target.value)
+                      return {
+                        ...p,
+                        examType: e.target.value,
+                        subject: nextSubjects.includes(p.subject) ? p.subject : nextSubjects[0],
+                      }
+                    })}
+                    className="input"
+                  >
+                    <option>WASSCE</option>
+                    <option>BECE</option>
+                  </select>
+                </div>
+              </>
+            )}
             <div>
-              <label className="label">Subject</label>
-              <select
-                value={meta.subject}
-                onChange={e => setMeta(p => ({ ...p, subject: e.target.value }))}
-                className="input"
-              >
-                {getSubjectsForExamType(meta.examType)
-                  .filter(s => !GHANAIAN_LANGUAGES.includes(s))
-                  .map(s => <option key={s}>{s}</option>)}
-                {meta.examType === 'BECE' && (
-                  <optgroup label="Ghanaian Language">
-                    {GHANAIAN_LANGUAGES.map(s => <option key={s}>{s}</option>)}
-                  </optgroup>
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="label">Exam type</label>
-              <select
-                value={meta.examType}
-                onChange={e => setMeta(p => {
-                  const nextSubjects = getSubjectsForExamType(e.target.value)
-                  return {
-                    ...p,
-                    examType: e.target.value,
-                    subject: nextSubjects.includes(p.subject) ? p.subject : nextSubjects[0],
-                  }
-                })}
-                className="input"
-              >
-                <option>WASSCE</option>
-                <option>BECE</option>
-              </select>
-            </div>
-            <div>
-              <label className="label">Year</label>
+              <label className="label">
+                {meta.questionSource === 'practice' ? 'Year (reference only)' : 'Year'}
+              </label>
               <input
                 type="number" value={meta.year}
                 onChange={e => setMeta(p => ({ ...p, year: e.target.value }))}
@@ -132,6 +163,41 @@ export default function PDFExtractorPanel() {
               />
             </div>
           </div>
+
+          {/* Past paper vs practice — controls whether this content counts
+             toward topic predictions. Meaningless for assignment questions,
+             which never enter the shared bank, so the teacher flow hides it. */}
+          {!hideQuestionSource && (
+            <div>
+              <label className="label">Question type</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMeta(p => ({ ...p, questionSource: 'pastPaper' }))}
+                  className={`px-4 py-2.5 rounded-lg border-2 text-sm font-medium text-left transition-colors ${
+                    meta.questionSource === 'pastPaper'
+                      ? 'border-teal-400 bg-teal-50 text-teal-700'
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  Past paper
+                  <p className="text-xs font-normal opacity-70 mt-0.5">Counts toward topic predictions</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMeta(p => ({ ...p, questionSource: 'practice' }))}
+                  className={`px-4 py-2.5 rounded-lg border-2 text-sm font-medium text-left transition-colors ${
+                    meta.questionSource === 'practice'
+                      ? 'border-teal-400 bg-teal-50 text-teal-700'
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  Practice / supplementary
+                  <p className="text-xs font-normal opacity-70 mt-0.5">Excluded from topic predictions</p>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* File upload dropzone */}
           <div>
@@ -184,10 +250,15 @@ export default function PDFExtractorPanel() {
             className="btn-primary w-full py-3 text-base"
           >
             {loading
-              ? <><span className="spinner border-white/40 border-t-white" /> Extracting questions…</>
+              ? <><span className="spinner border-white/40 border-t-white" /> Analysing pages and diagrams…</>
               : <><FileSearch className="w-4 h-4" /> Extract questions from PDF</>
             }
           </button>
+          {loading && (
+            <p className="text-xs text-slate-400 text-center -mt-2">
+              Reading every page, including diagrams — this can take a minute or two for longer papers.
+            </p>
+          )}
         </div>
       )}
 

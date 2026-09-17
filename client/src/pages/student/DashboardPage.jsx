@@ -32,6 +32,7 @@ export default function DashboardPage() {
     <AppShell
       title={`Welcome back, ${user?.fullName?.split(' ')[0] || 'Student'} 👋`}
       subtitle={`${user?.examType || 'WASSCE'} preparation dashboard`}
+      bgOpacity={0.75}
     >
       <div className="max-w-5xl mx-auto space-y-7">
 
@@ -121,11 +122,15 @@ export default function DashboardPage() {
             <h2 className="section-title">Getting Started</h2>
             <div className="space-y-3">
               {[
-                { step: 'Account created',         done: true,  to: null         },
-                { step: 'View topic predictions',  done: false, to: '/predict'   },
-                { step: 'Complete first practice', done: false, to: '/practice'  },
-                { step: 'Take a mock exam',        done: false, to: '/mock-exam' },
-                { step: 'Download your report',    done: false, to: null         },
+                { step: 'Account created',         done: true,                                   to: null         },
+                { step: 'View topic predictions',  done: false,                                   to: '/predict'   },
+                // The only two of these the User model actually tracks today
+                // (mock-exam completion and report downloads aren't recorded
+                // anywhere yet) — derived from real progress instead of a
+                // literal that could never check off.
+                { step: 'Complete first practice', done: (user?.totalQuestionsAnswered || 0) > 0, to: '/practice'  },
+                { step: 'Take a mock exam',        done: false,                                   to: '/mock-exam' },
+                { step: 'Download your report',    done: false,                                   to: null         },
               ].map(({ step, done, to }) => (
                 <div
                   key={step}

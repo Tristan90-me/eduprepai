@@ -432,6 +432,14 @@ export const CURRICULUM = {
         },
       ],
     },
+  },
+
+  // ════════════════════════════════════════════════════════════
+  // SCIENCE (BECE only — new NaCCA JHS curriculum name for the
+  // subject formerly called Integrated Science at BECE. WASSCE
+  // keeps the 'Integrated Science' name above.)
+  // ════════════════════════════════════════════════════════════
+  'Science': {
     BECE: {
       topics: [
         {

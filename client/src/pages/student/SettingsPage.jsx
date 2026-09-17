@@ -1,12 +1,14 @@
 import { useState, useEffect }  from 'react'
 import { useAuth }               from '../../context/AuthContext'
+import { useNotifications }      from '../../context/NotificationContext'
 import { settingsAPI }           from '../../api/settings.api'
+import { assignmentAPI }         from '../../api/assignment.api'
 import AppShell                  from '../../components/layout/AppShell'
 import BadgeCard                 from '../../components/BadgeCard'
 import {
-  User, Lock, BookOpen, Award,
+  User, Lock, BookOpen, Award, Users,
   Save, Flame, Target, BarChart2,
-  CheckCircle2, AlertCircle,
+  CheckCircle2, AlertCircle, LogIn,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { SUBJECTS_WASSCE, SUBJECTS_BECE, getPickerTiles } from '../../constants/subjects'
@@ -15,12 +17,14 @@ import { SUBJECTS_WASSCE, SUBJECTS_BECE, getPickerTiles } from '../../constants/
 const TABS = [
   { id: 'profile',  label: 'Profile',  icon: User  },
   { id: 'subjects', label: 'Subjects', icon: BookOpen },
+  { id: 'classes',  label: 'Classes',  icon: Users },
   { id: 'password', label: 'Password', icon: Lock  },
   { id: 'badges',   label: 'Badges',   icon: Award },
 ]
 
 export default function SettingsPage() {
   const { user, updateUser } = useAuth()
+  const { addBadgeNotifications } = useNotifications()
 
   const [tab,     setTab]     = useState('profile')
   const [profile, setProfile] = useState(null)
@@ -39,6 +43,45 @@ export default function SettingsPage() {
   const [confirmPw, setConfirmPw] = useState('')
   const [pwError,   setPwError]   = useState('')
   const [openGroup, setOpenGroup] = useState(null) // which group tile (e.g. 'Ghanaian Language') is expanded
+
+  // ── Classes (teacher join codes) ────────────────────────────
+  const [joinedClasses, setJoinedClasses] = useState([])
+  const [classesLoading, setClassesLoading] = useState(false)
+  const [joinCodeInput, setJoinCodeInput] = useState('')
+  const [joining, setJoining] = useState(false)
+
+  const loadClasses = async () => {
+    setClassesLoading(true)
+    try {
+      const data = await assignmentAPI.getClasses()
+      setJoinedClasses(data.classes || [])
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setClassesLoading(false)
+    }
+  }
+
+  const handleJoinClass = async (e) => {
+    e.preventDefault()
+    if (!joinCodeInput.trim()) return
+    setJoining(true)
+    try {
+      const data = await assignmentAPI.joinClass(joinCodeInput.trim())
+      toast.success(data.message)
+      setJoinCodeInput('')
+      loadClasses()
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setJoining(false)
+    }
+  }
+
+  useEffect(() => {
+    if (tab === 'classes' && joinedClasses.length === 0) loadClasses()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
 
   // ── Load profile ───────────────────────────────────────────
   useEffect(() => {
@@ -138,6 +181,7 @@ export default function SettingsPage() {
       const data = await settingsAPI.checkBadges()
       if (data.newBadges?.length > 0) {
         toast.success(data.message)
+        addBadgeNotifications(data.newBadges)
         // Reload profile to show new badges
         const profileData = await settingsAPI.getProfile()
         setProfile(profileData.profile)
@@ -421,6 +465,54 @@ export default function SettingsPage() {
                 : <><Save className="w-4 h-4" /> Save subjects</>
               }
             </button>
+          </div>
+        )}
+
+        {/* ══════════════ CLASSES TAB ════════════════════════ */}
+        {tab === 'classes' && (
+          <div className="space-y-5 animate-fade-in">
+            <div className="card">
+              <h3 className="section-title flex items-center gap-2">
+                <LogIn className="w-4 h-4 text-teal-600" />
+                Join a class
+              </h3>
+              <p className="text-sm text-slate-500 mb-4">
+                Enter the join code your teacher shared to receive their assignments.
+              </p>
+              <form onSubmit={handleJoinClass} className="flex gap-3">
+                <input
+                  type="text"
+                  value={joinCodeInput}
+                  onChange={e => setJoinCodeInput(e.target.value.toUpperCase())}
+                  placeholder="e.g. MATH-7K2Q"
+                  className="input flex-1"
+                />
+                <button type="submit" disabled={joining} className="btn-primary px-5">
+                  {joining ? <span className="spinner border-white/40 border-t-white" /> : 'Join'}
+                </button>
+              </form>
+            </div>
+
+            <div className="card">
+              <h3 className="section-title flex items-center gap-2">
+                <Users className="w-4 h-4 text-teal-600" />
+                Your classes
+              </h3>
+              {classesLoading && <p className="text-sm text-slate-400 text-center py-6">Loading…</p>}
+              {!classesLoading && joinedClasses.length === 0 && (
+                <p className="text-sm text-slate-400 text-center py-6">You haven't joined any classes yet.</p>
+              )}
+              <div className="space-y-2">
+                {joinedClasses.map(c => (
+                  <div key={c._id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{c.name}</p>
+                      <p className="text-xs text-slate-400">{c.subject} · {c.examType} · Taught by {c.teacherId?.fullName || 'a teacher'}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

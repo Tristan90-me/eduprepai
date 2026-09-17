@@ -1,9 +1,13 @@
 import { CheckCircle2, XCircle } from 'lucide-react'
+import QuestionDiagram from '../QuestionDiagram'
+import PartAnswerEditor from '../PartAnswerEditor'
 
 // ── ExamSectionB ───────────────────────────────────────────────
 // Renders all 4 structured questions for Section B.
 // Students type their answers in text areas.
-export default function ExamSectionB({ questions, answers, onAnswer, isReview = false, markedQuestions }) {
+export default function ExamSectionB({ questions, answers, onAnswer, isReview = false, markedQuestions, onExplain, explaining = false }) {
+  const totalMarks = questions.reduce((sum, q) => sum + (q.marks || 0), 0)
+
   return (
     <div className="space-y-6">
 
@@ -12,10 +16,10 @@ export default function ExamSectionB({ questions, answers, onAnswer, isReview = 
         <div className="flex items-start justify-between">
           <div>
             <h2 className="font-bold text-blue-900 text-lg" style={{ fontFamily: 'var(--font-heading)' }}>
-              Section B — Structured Questions
+              Section B — Structured Question{questions.length > 1 ? 's' : ''}
             </h2>
             <p className="text-blue-700 text-sm mt-1">
-              Answer ALL {questions.length} questions · 10 marks each · {questions.length * 10} marks total
+              {questions.length > 1 ? `Answer ALL ${questions.length} questions` : 'Answer this question'} · {totalMarks} marks total
             </p>
           </div>
           <span className="badge-blue text-sm px-3 py-1.5 flex-shrink-0">
@@ -44,43 +48,26 @@ export default function ExamSectionB({ questions, answers, onAnswer, isReview = 
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="badge-blue">Structured</span>
-                  <span className="badge-gray">10 marks</span>
+                  <span className="badge-gray">{q.marks} marks</span>
                   <span className="text-xs text-slate-400">{q.topic}</span>
                 </div>
+                <QuestionDiagram hasImage={q.hasImage} imageData={q.imageData} />
                 <p className="text-slate-800 text-sm leading-relaxed font-medium">
                   {q.questionText}
                 </p>
               </div>
             </div>
 
-            {/* Sub-parts */}
-            {q.parts?.length > 0 && (
-              <div className="ml-11 mb-4 space-y-2.5 bg-slate-50 rounded-xl p-4">
-                {q.parts.map(part => (
-                  <div key={part.part} className="flex gap-2.5 text-sm text-slate-700">
-                    <span className="font-bold text-blue-600 flex-shrink-0 w-5">({part.part})</span>
-                    <span className="flex-1">{part.text}</span>
-                    <span className="text-slate-400 flex-shrink-0 font-medium">[{part.marks} marks]</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Answer area */}
+            {/* Answer area — one box per sub-part, or a single textarea */}
             <div className="ml-11">
-              <label className="label">
-                Your answer
-                <span className="text-slate-400 font-normal ml-1">
-                  — address each part (a), (b), (c) separately
-                </span>
-              </label>
-              <textarea
+              <PartAnswerEditor
+                parts={q.parts}
                 value={answer}
-                onChange={e => !isReview && onAnswer(idx, e.target.value)}
+                onChange={text => onAnswer(idx, text)}
                 disabled={isReview}
+                isReview={isReview}
+                partResults={marked?.partResults || []}
                 placeholder="Write your answer here. Label each part clearly: (a) ..., (b) ..., (c) ..."
-                rows={7}
-                className="input resize-none disabled:bg-slate-50 disabled:text-slate-600"
               />
               {!isReview && (
                 <p className="text-xs text-slate-400 mt-1.5 text-right">
@@ -92,35 +79,43 @@ export default function ExamSectionB({ questions, answers, onAnswer, isReview = 
             {/* Review result */}
             {showResult && (
               <div className={`mt-4 ml-11 rounded-xl px-4 py-3 border ${
-                (marked.marksAwarded / 10) >= 0.5
+                (marked.marksAwarded / (q.marks || 1)) >= 0.5
                   ? 'bg-green-50 border-green-200'
                   : 'bg-orange-50 border-orange-200'
               }`}>
                 <div className="flex items-center gap-2 mb-2">
-                  {(marked.marksAwarded / 10) >= 0.5
+                  {(marked.marksAwarded / (q.marks || 1)) >= 0.5
                     ? <CheckCircle2 className="w-4 h-4 text-green-500" />
                     : <XCircle className="w-4 h-4 text-orange-500" />
                   }
                   <span className="font-semibold text-sm">
-                    {marked.marksAwarded} / 10 marks
+                    {marked.marksAwarded} / {q.marks} marks
                   </span>
                 </div>
                 {marked.aiFeedback && (
                   <p className="text-xs text-slate-600 mb-2">{marked.aiFeedback}</p>
                 )}
-                {marked.partResults?.length > 0 && (
-                  <div className="space-y-1.5 mt-2 pt-2 border-t border-slate-200">
-                    {marked.partResults.map((pr, pi) => (
-                      <div key={pi} className="flex gap-2 text-xs text-slate-600">
-                        <span className="font-semibold text-blue-600 flex-shrink-0">
-                          ({pr.part})
-                        </span>
-                        <span className="text-slate-500">{pr.marksAwarded}/{pr.marksAvailable}m —</span>
-                        <span className="flex-1">{pr.feedback}</span>
-                      </div>
-                    ))}
-                  </div>
+                {onExplain && (
+                  <button
+                    onClick={() => onExplain(idx)}
+                    disabled={explaining}
+                    className="text-xs text-teal-600 hover:text-teal-700 font-medium mt-3 pt-2 border-t border-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Explain this question
+                  </button>
                 )}
+              </div>
+            )}
+
+            {/* Marking scheme — the guide used to mark this answer */}
+            {isReview && q.modelAnswer && (
+              <div className="mt-4 ml-11 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Marking scheme
+                </p>
+                <p className="text-sm text-slate-600 whitespace-pre-line leading-relaxed">
+                  {q.modelAnswer}
+                </p>
               </div>
             )}
           </div>

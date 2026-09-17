@@ -42,6 +42,13 @@ const masteryProfileSchema = new mongoose.Schema(
     consecutiveCorrect:   { type: Number, default: 0 },
     consecutiveIncorrect: { type: Number, default: 0 },
 
+    // ── Spaced repetition (Leitner system) ─────────────────────
+    // Box 0 = just introduced/reset by a wrong answer, box 5 = well
+    // consolidated. Drives when this topic resurfaces for review —
+    // see computeMasteryUpdate in marking.utils.js.
+    leitnerBox:     { type: Number, default: 0, min: 0, max: 5 },
+    nextReviewDate: { type: Date, default: null },
+
     lastPracticed: { type: Date, default: null },
   },
   { timestamps: true }

@@ -4,14 +4,7 @@ import AppShell                   from '../../components/layout/AppShell'
 import { reportAPI }              from '../../api/report.api'
 import { Download, Trophy, ArrowLeft, FileText, CheckCircle2, XCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-// ── Grade colour helper ────────────────────────────────────────
-const gradeColour = (grade) => {
-  if (['A1','B2','B3'].includes(grade)) return 'text-green-700 bg-green-50 border-green-300'
-  if (['C4','C5','C6'].includes(grade)) return 'text-teal-700 bg-teal-50 border-teal-300'
-  if (['D7','E8'].includes(grade))       return 'text-amber-700 bg-amber-50 border-amber-300'
-  return 'text-red-700 bg-red-50 border-red-300'
-}
+import { gradeColour } from '../../utils/gradeUtils'
 
 export default function ReportPage() {
   const { id }     = useParams()
@@ -59,6 +52,11 @@ export default function ReportPage() {
 
   const { results, subject, examType, student, submittedAt, sectionB, sectionC } = report
 
+  // A subject with no real Section B at all (e.g. BECE Mathematics) has
+  // its actual WAEC "Section B" living in this app's sectionC bucket —
+  // label it "Section B" for the student instead of the internal "C".
+  const sectionCLabel = (results.sectionBTotal ?? 40) === 0 ? 'B' : 'C'
+
   return (
     <AppShell
       title="Exam Report"
@@ -95,7 +93,7 @@ export default function ReportPage() {
             {results.totalMarks}<span className="text-xl text-slate-400">/{results.availableMarks}</span>
           </p>
           <p className="text-slate-500 text-sm mb-4">{results.percent}% · {results.gradeLabel}</p>
-          <span className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl border-2 font-bold text-2xl ${gradeColour(results.waecGrade)}`}>
+          <span className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl border-2 font-bold text-2xl ${gradeColour(results.waecGrade, examType)}`}>
             {results.waecGrade}
             <span className="text-sm font-medium opacity-70">{results.gradeLabel}</span>
           </span>
@@ -106,10 +104,15 @@ export default function ReportPage() {
           <h3 className="section-title">Section breakdown</h3>
           <div className="space-y-3">
             {[
-              { label: 'Section A — MCQ',        marks: results.sectionAMarks, total: 40, colour: 'bg-teal-500'   },
-              { label: 'Section B — Structured', marks: results.sectionBMarks, total: 40, colour: 'bg-blue-500'   },
-              { label: 'Section C — Essay',      marks: results.sectionCMarks, total: 20, colour: 'bg-purple-500' },
-            ].map(({ label, marks, total, colour }) => (
+              { label: 'Section A — MCQ',        marks: results.sectionAMarks, total: results.sectionATotal ?? 40, colour: 'bg-teal-500'   },
+              { label: 'Section B — Structured', marks: results.sectionBMarks, total: results.sectionBTotal ?? 40, colour: 'bg-blue-500'   },
+              { label: `Section ${sectionCLabel} — Essay`, marks: results.sectionCMarks, total: results.sectionCTotal ?? 20, colour: 'bg-purple-500' },
+            ]
+              // A subject can genuinely have no questions in a section
+              // (e.g. BECE Mathematics has no Section B) — skip it rather
+              // than showing a misleading "0/40 (0%)" row.
+              .filter(({ total }) => total > 0)
+              .map(({ label, marks, total, colour }) => (
               <div key={label}>
                 <div className="flex justify-between text-sm mb-1.5">
                   <span className="font-medium text-slate-700">{label}</span>
@@ -186,14 +189,14 @@ export default function ReportPage() {
           <div className="card">
             <h3 className="section-title flex items-center gap-2">
               <FileText className="w-4 h-4 text-purple-600" />
-              Section C — Essay feedback
+              Section {sectionCLabel} — Essay feedback
             </h3>
             {sectionC.map((q, i) => (
               <div key={i} className={`rounded-xl border p-4 ${
-                q.marksAwarded >= 10 ? 'border-green-200 bg-green-50/30' : 'border-orange-200 bg-orange-50/30'
+                q.marksAwarded >= (q.marks || 20) / 2 ? 'border-green-200 bg-green-50/30' : 'border-orange-200 bg-orange-50/30'
               }`}>
                 <div className="flex items-center gap-2 mb-2">
-                  {q.marksAwarded >= 10
+                  {q.marksAwarded >= (q.marks || 20) / 2
                     ? <CheckCircle2 className="w-4 h-4 text-green-500" />
                     : <XCircle className="w-4 h-4 text-orange-500" />
                   }

@@ -8,6 +8,12 @@ export const practiceAPI = {
   // Get topics with mastery data for subject picker
   getTopics:     (params)  => api.get('/practice/topics',    { params }),
 
+  // Ordered mastery-progression path (Session Path) for a subject
+  getSessionPath: (params) => api.get('/practice/session-path', { params }),
+
+  // Cross-subject topic search for the command palette (⌘K)
+  searchTopics:  (params)  => api.get('/practice/topics/search', { params }),
+
   // Get student mastery profile for a subject
   getMastery:    (params)  => api.get('/practice/mastery',   { params }),
 

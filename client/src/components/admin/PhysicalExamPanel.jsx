@@ -21,10 +21,13 @@ export default function PhysicalExamPanel() {
   const [results,   setResults]   = useState(null)
 
   // ── Answers ────────────────────────────────────────────────
-  const [answersA,     setAnswersA]     = useState(Array(40).fill(''))
-  const [answersB,     setAnswersB]     = useState(['', '', '', ''])
-  const [answerCIdx,   setAnswerCIdx]   = useState(0)
-  const [answerC,      setAnswerC]      = useState('')
+  // Sizes are set from the selected exam's real structure in
+  // handleSelectExam — these defaults only cover the brief window
+  // before an exam is chosen.
+  const [answersA,     setAnswersA]     = useState([])
+  const [answersB,     setAnswersB]     = useState([])
+  const [selectedCIdx, setSelectedCIdx] = useState([])   // indices into exam.sectionC
+  const [answersC,     setAnswersC]     = useState({})   // { [index]: text }
   const [activeSection, setActiveSection] = useState('A')
 
   // ── Photo upload state ─────────────────────────────────────
@@ -62,10 +65,14 @@ export default function PhysicalExamPanel() {
   // ── Select exam ────────────────────────────────────────────
   const handleSelectExam = (e) => {
     setExam(e)
-    setAnswersA(Array(40).fill(''))
-    setAnswersB(['', '', '', ''])
-    setAnswerCIdx(0)
-    setAnswerC('')
+    setAnswersA(Array(e.sectionA?.length || 0).fill(''))
+    setAnswersB(Array(e.sectionB?.length || 0).fill(''))
+    setSelectedCIdx([])
+    setAnswersC({})
+    // Reset to Section A — some subjects have no Section B at all (e.g.
+    // BECE Mathematics), so a previously-active 'B' tab could otherwise
+    // be stuck open with nothing in it.
+    setActiveSection('A')
     setStep(2)
   }
 
@@ -79,7 +86,7 @@ export default function PhysicalExamPanel() {
       const reader = new FileReader()
       const base64 = await new Promise((res, rej) => {
         reader.onload  = () => res(reader.result.split(',')[1])
-        reader.onerror = rej
+        reader.onerror = () => rej(new Error('Failed to read photo'))
         reader.readAsDataURL(file)
       })
 
@@ -87,7 +94,7 @@ export default function PhysicalExamPanel() {
         imageBase64:   base64,
         section,
         subject:       exam?.subject,
-        questionCount: section === 'A' ? 40 : 1,
+        questionCount: section === 'A' ? answersA.length : 1,
       })
 
       if (section === 'A' && data.extracted?.answers) {
@@ -99,7 +106,7 @@ export default function PhysicalExamPanel() {
         setAnswersB(updated)
         toast.success('Section B answer extracted — please review')
       } else if (section === 'C' && data.extracted?.answer) {
-        setAnswerC(data.extracted.answer)
+        setAnswersC(prev => ({ ...prev, [idx]: data.extracted.answer }))
         toast.success('Essay extracted — please review')
       }
     } catch (err) {
@@ -113,13 +120,16 @@ export default function PhysicalExamPanel() {
   const handleSubmit = async () => {
     setLoading(true)
     try {
+      // Same index-aligned shape the online mock-exam flow already submits
+      // (mockExam.controller.js's submitExam) — '' for anything not selected.
+      const sectionCAnswers = (exam.sectionC || []).map((_, i) => answersC[i] || '')
+
       const data = await adminAPI.submitPhysicalExam({
         examId:          exam._id,
         studentId:       student._id,
         sectionAAnswers: answersA,
         sectionBAnswers: answersB,
-        sectionCAnswer:  answerC,
-        sectionCIndex:   answerCIdx,
+        sectionCAnswers,
       })
       setResults(data)
       setStep(3)
@@ -134,6 +144,12 @@ export default function PhysicalExamPanel() {
   // ── Answered counts ────────────────────────────────────────
   const aCount = answersA.filter(Boolean).length
   const bCount = answersB.filter(a => a.trim()).length
+  const sectionCCap = exam?.sectionCAnswerCount || 1
+  const cCount = selectedCIdx.filter(i => (answersC[i] || '').trim()).length
+  // A subject with no real Section B at all (e.g. BECE Mathematics) has
+  // its actual WAEC "Section B" living in this app's sectionC bucket —
+  // label it "Section B" for the admin instead of the internal "C".
+  const sectionCLabel = answersB.length === 0 ? 'B' : 'C'
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -262,10 +278,13 @@ export default function PhysicalExamPanel() {
           {/* Section tabs */}
           <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
             {[
-              { key: 'A', label: `Section A (${aCount}/40)` },
-              { key: 'B', label: `Section B (${bCount}/4)` },
-              { key: 'C', label: 'Section C' },
-            ].map(({ key, label }) => (
+              { key: 'A', label: `Section A (${aCount}/${answersA.length})` },
+              { key: 'B', label: `Section B (${bCount}/${answersB.length})` },
+              { key: 'C', label: `Section ${sectionCLabel} (${cCount}/${sectionCCap})` },
+            ]
+              // Some subjects have no Section B at all (e.g. BECE Mathematics)
+              .filter(({ key }) => key !== 'B' || answersB.length > 0)
+              .map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setActiveSection(key)}
@@ -333,7 +352,7 @@ export default function PhysicalExamPanel() {
               <h4 className="font-medium text-slate-800 text-sm">
                 Section B — Type or paste the student's written answers
               </h4>
-              {[0, 1, 2, 3].map(idx => (
+              {answersB.map((_, idx) => (
                 <div key={idx}>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="label mb-0">Question {idx + 1} answer</label>
@@ -363,50 +382,63 @@ export default function PhysicalExamPanel() {
             </div>
           )}
 
-          {/* Section C — essay */}
+          {/* Section C — essay(s). Capped multi-select, same model as the
+             online exam's ExamSectionC.jsx — most subjects answer 1 of 2,
+             but e.g. BECE Computing answers 3 of 4. */}
           {activeSection === 'C' && (
             <div className="card space-y-4">
               <h4 className="font-medium text-slate-800 text-sm">
-                Section C — Select which question and enter the essay
+                Section {sectionCLabel} — Select {sectionCCap > 1 ? `up to ${sectionCCap} questions` : 'which question'} and enter the essay{sectionCCap > 1 ? 's' : ''}
               </h4>
 
-              <div className="flex gap-2">
-                {[0, 1].map(idx => (
-                  <button
-                    key={idx}
-                    onClick={() => setAnswerCIdx(idx)}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
-                      answerCIdx === idx
-                        ? 'bg-purple-600 text-white border-purple-600'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'
-                    }`}
-                  >
-                    Question {idx + 1}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-2">
+                {(exam.sectionC || []).map((_, idx) => {
+                  const isSelected = selectedCIdx.includes(idx)
+                  const atCap = selectedCIdx.length >= sectionCCap
+                  return (
+                    <button
+                      key={idx}
+                      disabled={!isSelected && atCap}
+                      onClick={() => setSelectedCIdx(prev =>
+                        isSelected ? prev.filter(i => i !== idx) : [...prev, idx]
+                      )}
+                      className={`flex-1 min-w-[100px] py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${
+                        isSelected
+                          ? 'bg-purple-600 text-white border-purple-600'
+                          : !isSelected && atCap
+                          ? 'bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-purple-300'
+                      }`}
+                    >
+                      Question {idx + 1}
+                    </button>
+                  )
+                })}
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="label mb-0">Essay answer (Question {answerCIdx + 1})</label>
-                  <label className="btn-secondary text-xs py-1 cursor-pointer">
-                    <Camera className="w-3 h-3" />
-                    Photo
-                    <input
-                      type="file" accept="image/*" className="hidden"
-                      onChange={e => handlePhotoUpload(e, 'C')}
-                      disabled={extracting}
-                    />
-                  </label>
+              {selectedCIdx.map(idx => (
+                <div key={idx}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="label mb-0">Essay answer (Question {idx + 1})</label>
+                    <label className="btn-secondary text-xs py-1 cursor-pointer">
+                      <Camera className="w-3 h-3" />
+                      Photo
+                      <input
+                        type="file" accept="image/*" className="hidden"
+                        onChange={e => handlePhotoUpload(e, 'C', idx)}
+                        disabled={extracting}
+                      />
+                    </label>
+                  </div>
+                  <textarea
+                    value={answersC[idx] || ''}
+                    onChange={e => setAnswersC(prev => ({ ...prev, [idx]: e.target.value }))}
+                    rows={10}
+                    placeholder="Type or paste the student's essay here..."
+                    className="input resize-none text-sm"
+                  />
                 </div>
-                <textarea
-                  value={answerC}
-                  onChange={e => setAnswerC(e.target.value)}
-                  rows={10}
-                  placeholder="Type or paste the student's essay here..."
-                  className="input resize-none text-sm"
-                />
-              </div>
+              ))}
             </div>
           )}
 

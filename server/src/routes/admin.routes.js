@@ -3,6 +3,9 @@ import {
   generateQuestions,
   approveQuestions,
   extractFromPDF,
+  getReviewQueue,
+  approveReviewQueue,
+  rejectReviewQueueItem,
 } from '../controllers/aiQuestions.controller.js'
 import {
   getStudentList,
@@ -22,6 +25,11 @@ router.use(restrictTo('admin'))
 router.post('/generate-questions', generateQuestions)
 router.post('/approve-questions',  approveQuestions)
 router.post('/extract-pdf',        extractFromPDF)
+
+// ── Review queue (batch PDF extraction lands here before going live) ──
+router.get('/review-queue',           getReviewQueue)
+router.post('/review-queue/approve',  approveReviewQueue)
+router.delete('/review-queue/:id',    rejectReviewQueueItem)
 
 // ── Physical exam grading (Option 5) ──────────────────────────
 router.get('/physical/students',          getStudentList)

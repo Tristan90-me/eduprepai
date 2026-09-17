@@ -1,9 +1,9 @@
 import { generateAIJSON } from '../utils/aiService.js'
 import Question from '../models/Question.model.js'
 import { asyncHandler, AppError } from '../middleware/error.middleware.js'
-import { createRequire } from 'module'
-const require   = createRequire(import.meta.url)
-const pdfParse  = require('pdf-parse')
+import { PDFParse } from 'pdf-parse'
+import { extractQuestionsWithVision } from '../utils/questionExtraction.utils.js'
+import { getGroundingContext, formatGroundingBlock } from '../utils/curriculumGrounding.utils.js'
 
 // ── POST /api/admin/generate-questions ─────────────────────────
 // Gemini generates WAEC-style questions based on admin config.
@@ -52,11 +52,15 @@ precise language, authentic Ghanaian context where relevant,
 correct mark allocations, and curriculum-aligned content.
 Always respond with valid JSON only. No markdown. No explanation outside the JSON.`
 
+  // Curriculum grounding — currently only populated for Computing;
+  // resolves to null (no-op) for every other subject.
+  const grounding = await getGroundingContext(subject, topic)
+
   const prompt = buildGenerationPrompt({
     subject, examType, topic, subtopic, year,
     difficulty, difficultyLabel, type,
     section: resolvedSection, marks, count,
-  })
+  }) + formatGroundingBlock(grounding)
 
   // ── Call AI ──────────────────────────────────────────────────
   const generated = await generateAIJSON(prompt, systemPrompt)
@@ -80,6 +84,9 @@ Always respond with valid JSON only. No markdown. No explanation outside the JSO
     section:    resolvedSection,
     marks,
     isAIGenerated: true,
+    // AI-generated content is never real exam evidence, regardless of how
+    // closely it mimics WAEC style — always 'practice', no admin choice.
+    questionSource: 'practice',
     previewId:  `preview_${Date.now()}_${i}`, // temp ID for frontend tracking
   }))
 
@@ -101,10 +108,14 @@ export const approveQuestions = asyncHandler(async (req, res) => {
     throw new AppError('No questions provided for approval', 400)
   }
 
-  // Strip frontend-only fields before saving
-  const cleaned = questions.map(({ previewId, isAIGenerated, ...rest }) => ({
+  // Strip only the frontend-only preview ID — everything else (including
+  // isAIGenerated and questionSource) came from the preview stage and must
+  // be preserved as-is. This endpoint is shared by both the AI Generator
+  // and PDF Extractor previews, so it must not assume a single origin —
+  // it previously force-set isAIGenerated: true on every approval, which
+  // silently mislabeled real PDF-extracted questions as AI-generated.
+  const cleaned = questions.map(({ previewId, ...rest }) => ({
     ...rest,
-    isAIGenerated: true,      // keep this flag in DB for tracking
     addedBy: req.user._id,
   }))
 
@@ -122,7 +133,7 @@ export const approveQuestions = asyncHandler(async (req, res) => {
 // Returns structured question previews — same review flow as generation.
 export const extractFromPDF = asyncHandler(async (req, res) => {
   // The PDF arrives as a base64 string from the frontend
-  const { pdfBase64, subject, examType, year } = req.body
+  const { pdfBase64, subject, examType, year, questionSource = 'pastPaper' } = req.body
 
   if (!pdfBase64) throw new AppError('No PDF data received', 400)
   if (!subject)   throw new AppError('Subject is required', 400)
@@ -132,9 +143,10 @@ export const extractFromPDF = asyncHandler(async (req, res) => {
 
   // ── Extract raw text from PDF ────────────────────────────────
   let extractedText
+  const parser = new PDFParse({ data: buffer })
   try {
-    const pdfData = await pdfParse(buffer)
-    extractedText = pdfData.text
+    const result = await parser.getText()
+    extractedText = result.text
 
     if (!extractedText || extractedText.trim().length < 50) {
       throw new AppError(
@@ -146,32 +158,18 @@ export const extractFromPDF = asyncHandler(async (req, res) => {
   } catch (err) {
     if (err.statusCode) throw err  // re-throw AppErrors
     throw new AppError('PDF parsing failed: ' + err.message, 400)
+  } finally {
+    await parser.destroy()
   }
 
-  // ── Truncate if too long for AI context ──────────────────────
-  // Gemini 1.5 Flash handles ~1M tokens but we keep prompts lean
-  const truncated = extractedText.length > 15000
-    ? extractedText.slice(0, 15000) + '\n[...text truncated for processing...]'
-    : extractedText
-
-  const systemPrompt = `You are a WAEC examination paper parser.
-You receive raw text extracted from a ${examType} past question paper and 
-identify every question, structuring them into a clean JSON format.
-Be thorough — extract ALL questions including sub-parts.
-Always respond with valid JSON only. No markdown. No preamble.`
-
-  const prompt = buildExtractionPrompt({
-    text: truncated,
-    subject,
-    examType,
-    year: year || 'unknown',
-  })
-
-  // ── Call AI ──────────────────────────────────────────────────
-  const extracted = await generateAIJSON(prompt, systemPrompt)
-
-  if (!Array.isArray(extracted)) {
-    throw new AppError('AI could not identify questions in this PDF. Check the file format.', 500)
+  // ── Vision-based extraction: render pages, call AI, crop diagrams,
+  // normalize topics — shared with the batch CLI extractor so both
+  // stay in sync (questionExtraction.utils.js's extractQuestionsWithVision).
+  let extracted
+  try {
+    extracted = await extractQuestionsWithVision({ buffer, text: extractedText, subject, examType, year })
+  } catch (err) {
+    throw new AppError(err.message, 500)
   }
 
   // ── Tag with metadata from admin's input ─────────────────────
@@ -180,8 +178,12 @@ Always respond with valid JSON only. No markdown. No preamble.`
     subject:    subject,
     examType:   examType || 'WASSCE',
     year:       Number(year) || new Date().getFullYear(),
-    isAIGenerated: false,    // these are real past questions, not generated
+    isAIGenerated: false,    // these are transcribed from a real PDF, not generated
     isPDFExtracted: true,
+    // Admin-selected: whether this PDF is a genuine past exam paper
+    // (counts toward predictions) or practice/supplementary content
+    // (excluded from predictions, still usable for practice/mock exams).
+    questionSource,
     previewId:  `pdf_${Date.now()}_${i}`,
   }))
 
@@ -192,6 +194,77 @@ Always respond with valid JSON only. No markdown. No preamble.`
     pageCount:     extractedText.length > 0 ? 'detected' : 'unknown',
     previews,
   })
+})
+
+// ── GET /api/admin/review-queue ────────────────────────────────
+// Lists questions awaiting admin review — inserted by the batch PDF
+// extractor with isActive: false, pendingReview: true, so they never
+// reach students until approved here.
+export const getReviewQueue = asyncHandler(async (req, res) => {
+  const { subject, examType, page = 1, limit = 50 } = req.query
+
+  const filter = { pendingReview: true }
+  if (subject)  filter.subject  = subject
+  if (examType) filter.examType = examType
+
+  const skip  = (Number(page) - 1) * Number(limit)
+  const total = await Question.countDocuments(filter)
+
+  const questions = await Question.find(filter)
+    .sort({ subject: 1, year: 1, createdAt: 1 })
+    .skip(skip)
+    .limit(Number(limit))
+    .lean()
+
+  res.json({
+    success: true,
+    total,
+    page:  Number(page),
+    pages: Math.ceil(total / Number(limit)),
+    // QuestionPreviewTable (shared with the generate/PDF preview flows)
+    // keys each row by `previewId`
+    questions: questions.map(q => ({ ...q, previewId: q._id.toString() })),
+  })
+})
+
+// ── POST /api/admin/review-queue/approve ───────────────────────
+// Admin approved (and possibly hand-edited) pending questions —
+// flips them live by setting isActive: true, pendingReview: false.
+export const approveReviewQueue = asyncHandler(async (req, res) => {
+  const { questions } = req.body
+  if (!Array.isArray(questions) || questions.length === 0) {
+    throw new AppError('No questions provided for approval', 400)
+  }
+
+  const results = await Promise.all(questions.map((q) => {
+    const { _id, previewId, __v, createdAt, updatedAt, ...fields } = q
+    return Question.findByIdAndUpdate(
+      _id || previewId,
+      { ...fields, isActive: true, pendingReview: false },
+      { new: true, runValidators: true }
+    )
+  }))
+
+  const approved = results.filter(Boolean)
+
+  res.json({
+    success: true,
+    message: `${approved.length} question${approved.length !== 1 ? 's' : ''} approved and added to the live bank`,
+    count:   approved.length,
+  })
+})
+
+// ── DELETE /api/admin/review-queue/:id ─────────────────────────
+// Admin rejected a pending question. Hard delete — it was never
+// live, so there's nothing worth preserving with a soft delete.
+export const rejectReviewQueueItem = asyncHandler(async (req, res) => {
+  const deleted = await Question.findOneAndDelete({
+    _id: req.params.id,
+    pendingReview: true, // safety: never touch an already-approved question via this route
+  })
+  if (!deleted) throw new AppError('Pending question not found', 404)
+
+  res.json({ success: true, message: 'Question rejected and removed' })
 })
 
 // ── Prompt builders (kept separate for clarity) ───────────────
@@ -253,38 +326,3 @@ Return ONLY a JSON array with exactly ${count} objects, each matching this struc
   }
 ]`
 }
-
-const buildExtractionPrompt = ({ text, subject, examType, year }) => `
-Extract ALL questions from this ${examType} ${subject} past paper (${year}).
-
-Raw text from PDF:
----
-${text}
----
-
-Instructions:
-- Identify every question — MCQ, structured, and essay
-- For MCQ: capture all 4 options and identify the correct answer if shown
-- For structured: capture each part (a, b, c) with its mark allocation
-- For essay: capture the full question and any guidance given
-- Determine the difficulty level (1-5) based on complexity
-- Assign the correct section: A (MCQ), B (Structured), C (Essay)
-- Marks: Section A = 1, Section B = varies (check the paper), Section C = 20
-
-Return ONLY a JSON array where each object matches this structure:
-[
-  {
-    "questionText": "The full question text",
-    "topic": "The WAEC topic this question belongs to",
-    "subtopic": "More specific subtopic if identifiable",
-    "type": "MCQ" or "Structured" or "Essay",
-    "section": "A" or "B" or "C",
-    "difficulty": 1-5 (your assessment),
-    "marks": number,
-    "options": ["option text", "option text", "option text", "option text"] or [],
-    "correctOption": "A" or "B" or "C" or "D" or "",
-    "modelAnswer": "marking guide or expected answer" or "",
-    "parts": [] or [{"part":"a","text":"...","marks":2,"answer":"..."}],
-    "syllabusReference": ""
-  }
-]`

@@ -1,28 +1,38 @@
 import { useState, useEffect } from 'react'
 import AppShell                 from '../../components/layout/AppShell'
 import { analyticsAPI }         from '../../api/analytics.api'
-import { Trophy, Medal, Flame, Target } from 'lucide-react'
+import { Trophy, Star, Flame } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// ── Rank medal colours ─────────────────────────────────────────
-const rankStyle = (rank) => {
-  if (rank === 1) return 'bg-amber-100 text-amber-700 border-amber-300'
-  if (rank === 2) return 'bg-slate-100 text-slate-600 border-slate-300'
-  if (rank === 3) return 'bg-orange-100 text-orange-700 border-orange-300'
-  return 'bg-white text-slate-500 border-slate-200'
+// ── StarRating ───────────────────────────────────────────────────
+// Replaces numeric leaderboard positions — reflects a student's
+// accuracy tier (1-5, from getStarRating on the server) rather than
+// a competitive rank number.
+const StarRating = ({ rating, size = 'sm' }) => {
+  const starSize = size === 'lg' ? 'w-5 h-5' : size === 'md' ? 'w-4 h-4' : 'w-3.5 h-3.5'
+  return (
+    <div className="flex items-center gap-0.5" aria-label={`${rating} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <Star
+          key={n}
+          className={`${starSize} ${n <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`}
+        />
+      ))}
+    </div>
+  )
 }
 
 export default function LeaderboardPage() {
-  const [data,    setData]    = useState([])
-  const [myRank,  setMyRank]  = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [data,      setData]      = useState([])
+  const [myRating,  setMyRating]  = useState(null)
+  const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
     const load = async () => {
       try {
         const res = await analyticsAPI.getLeaderboard()
         setData(res.leaderboard || [])
-        setMyRank(res.currentUserRank)
+        setMyRating(res.myRating)
       } catch (err) {
         toast.error(err.message)
       } finally {
@@ -47,20 +57,20 @@ export default function LeaderboardPage() {
     <AppShell title="Leaderboard" subtitle="Top students by questions answered and accuracy">
       <div className="max-w-3xl mx-auto space-y-6">
 
-        {/* My rank banner */}
-        {myRank && (
+        {/* My rating banner */}
+        {myRating != null && (
           <div className="card bg-teal-50 border-teal-200 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center">
               <Trophy className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="font-semibold text-teal-900 text-sm">Your rank</p>
+              <p className="font-semibold text-teal-900 text-sm">Your rating</p>
               <p className="text-teal-700 text-xs">
-                #{myRank} overall · Keep practising to climb higher
+                Based on your practice accuracy · Keep practising to earn more stars
               </p>
             </div>
-            <span className="ml-auto text-2xl font-bold text-teal-700" style={{ fontFamily: 'var(--font-heading)' }}>
-              #{myRank}
+            <span className="ml-auto">
+              <StarRating rating={myRating} size="lg" />
             </span>
           </div>
         )}
@@ -68,13 +78,12 @@ export default function LeaderboardPage() {
         {/* Top 3 podium */}
         {top3.length > 0 && (
           <div className="grid grid-cols-3 gap-3">
-            {[top3[1], top3[0], top3[2]].filter(Boolean).map((u, i) => {
+            {[top3[1], top3[0], top3[2]].filter(Boolean).map((u) => {
               const actualRank = u.rank
-              const height     = actualRank === 1 ? 'h-28' : actualRank === 2 ? 'h-20' : 'h-16'
               return (
                 <div key={u.rank} className={`card text-center ${u.isCurrentUser ? 'ring-2 ring-teal-500' : ''}`}>
-                  <div className={`w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center border-2 font-bold text-sm ${rankStyle(actualRank)}`}>
-                    {actualRank}
+                  <div className="flex justify-center mb-2">
+                    <StarRating rating={u.rating} size="md" />
                   </div>
                   <p className="font-semibold text-slate-800 text-sm truncate">{u.name}</p>
                   <p className="text-xs text-slate-400 truncate mb-2">{u.school}</p>
@@ -94,7 +103,7 @@ export default function LeaderboardPage() {
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-12">Rank</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider w-28">Rating</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Student</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Questions</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Accuracy</th>
@@ -112,9 +121,7 @@ export default function LeaderboardPage() {
                   }`}
                 >
                   <td className="py-3 px-4">
-                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border ${rankStyle(u.rank)}`}>
-                      {u.rank}
-                    </span>
+                    <StarRating rating={u.rating} />
                   </td>
                   <td className="py-3 px-4">
                     <p className={`text-sm ${u.isCurrentUser ? 'font-semibold text-teal-800' : 'text-slate-800'}`}>

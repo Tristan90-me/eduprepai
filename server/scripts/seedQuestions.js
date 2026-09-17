@@ -21,16 +21,6 @@ const ai = new GoogleGenAI({ apiKey: GEMINI_KEY })
 // ── We import directly — no need for the full Express app ──────
 import { CURRICULUM, YEARS, QUESTION_CONFIG } from './seedData.js'
 
-// ── MongoDB connection ─────────────────────────────────────────
-const MONGODB_URI = process.env.MONGODB_URI
-if (!MONGODB_URI) {
-  console.error('❌ MONGODB_URI not found in .env')
-  process.exit(1)
-}
-
-// ── Gemini client ──────────────────────────────────────────────
-const ai = new GoogleGenAI({})
-
 // ── Minimal Question schema (avoids importing the full app) ────
 const questionSchema = new mongoose.Schema({
   subject:           String,
@@ -51,6 +41,7 @@ const questionSchema = new mongoose.Schema({
   parts:             Array,
   isActive:          { type: Boolean, default: true },
   isAIGenerated:     { type: Boolean, default: true },
+  questionSource:    { type: String, default: 'practice' },
 }, { timestamps: true })
 
 // ── Rate limit helper ──────────────────────────────────────────

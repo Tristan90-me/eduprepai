@@ -1,12 +1,13 @@
 import { CheckCircle2, Circle } from 'lucide-react'
 import MathText from '../MathText'
+import QuestionDiagram from '../QuestionDiagram'
 const LETTERS = ['A', 'B', 'C', 'D']
 
 // ── ExamSectionA ───────────────────────────────────────────────
 // Renders all 40 MCQ questions for Section A.
 // Student can navigate freely between questions.
 // Answers are auto-saved on each selection.
-export default function ExamSectionA({ questions, answers, onAnswer, isReview = false, markedQuestions }) {
+export default function ExamSectionA({ questions, answers, onAnswer, isReview = false, markedQuestions, onExplain, explaining = false }) {
   return (
     <div className="space-y-6">
 
@@ -57,6 +58,8 @@ export default function ExamSectionA({ questions, answers, onAnswer, isReview = 
                 </p>
               </div>
 
+              <QuestionDiagram hasImage={q.hasImage} imageData={q.imageData} />
+
               {/* MCQ options */}
               <div className="space-y-1.5 ml-8">
                 {LETTERS.map((letter, i) => {
@@ -100,6 +103,15 @@ export default function ExamSectionA({ questions, answers, onAnswer, isReview = 
                 <p className="text-xs text-slate-500 mt-2 ml-8 italic">
                   {marked.aiFeedback}
                 </p>
+              )}
+              {showResult && onExplain && (
+                <button
+                  onClick={() => onExplain(idx)}
+                  disabled={explaining}
+                  className="text-xs text-teal-600 hover:text-teal-700 font-medium mt-2 ml-8 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Explain this question
+                </button>
               )}
             </div>
           )

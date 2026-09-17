@@ -2,7 +2,15 @@
 // Pure scoring functions. Takes question data, returns topic scores.
 // No side effects — same input always produces same output.
 
+import { getCanonicalTopics } from '../data/beceCurriculum.js'
+import { normalizeTopic } from './questionExtraction.utils.js'
+
 const CURRENT_YEAR = new Date().getFullYear()
+
+// Years of same-curriculum history before frequency/recency/gap are
+// fully trusted. Below this, scoring leans on the real syllabus
+// signal instead — see freqTrust in analyseTopics/scoreOneTopic.
+const MATURE_YEARS = 5
 
 // ── Subject-specific score weights ────────────────────────────
 // Different subjects have different predictability patterns.
@@ -15,7 +23,10 @@ const SUBJECT_WEIGHTS = {
   'English Language': {
     frequency: 0.20, recency: 0.35, gap: 0.15, syllabus: 0.30,
   },
-  'Integrated Science': {
+  'Integrated Science': {   // WASSCE only — BECE now uses 'Science'
+    frequency: 0.30, recency: 0.25, gap: 0.20, syllabus: 0.25,
+  },
+  'Science': {              // BECE only — same predictability pattern, new name
     frequency: 0.30, recency: 0.25, gap: 0.20, syllabus: 0.25,
   },
   'Social Studies': {
@@ -30,13 +41,29 @@ const SUBJECT_WEIGHTS = {
 // ── Main export ────────────────────────────────────────────────
 // Receives all questions for one subject, returns scored topic array
 // sorted from highest to lowest predicted confidence.
-export const analyseTopics = (questions, subject) => {
+export const analyseTopics = (questions, subject, examType) => {
+  // Real syllabus signal only applies to BECE — Question.subject values
+  // like 'Mathematics'/'Computing' are shared with WASSCE, so this must
+  // gate on examType, not just whether a canonical list exists for the
+  // subject name, or a WASSCE subject would get scored against the JHS
+  // BECE topic list.
+  const canonicalTopics = examType === 'BECE' ? getCanonicalTopics(subject) : null
+
+  // How many distinct years of (already era-filtered, for BECE) data
+  // exist for this subject overall — drives how much weight shifts from
+  // frequency/recency/gap onto the syllabus signal while the sample is
+  // thin. Irrelevant when there's no real syllabus signal to shift onto.
+  const datasetYears = [...new Set(questions.map(q => q.year))]
+  const freqTrust = canonicalTopics
+    ? Math.min(datasetYears.length / MATURE_YEARS, 1)
+    : 1
+
   // Step 1: Group all questions by topic
   const topicMap = groupByTopic(questions)
 
   // Step 2: Score each topic across all 8 signals
   const scored = Object.entries(topicMap).map(([topic, qs]) => {
-    return scoreOneTopic(topic, qs, subject, topicMap)
+    return scoreOneTopic(topic, qs, subject, topicMap, canonicalTopics, freqTrust)
   })
 
   // Step 3: Sort highest raw score first
@@ -55,8 +82,20 @@ const groupByTopic = (questions) => {
   }, {})
 }
 
+// ── Real syllabus signal ────────────────────────────────────────
+// Checks whether a topic matches the canonical NaCCA CCP taxonomy for
+// this subject, reusing the same fuzzy matcher already used to keep
+// AI-extracted topic labels consistent (questionExtraction.utils.js).
+// Returns null when there's no canonical list to check against — the
+// caller falls back to the frequency proxy in that case.
+const computeSyllabusSignal = (topic, canonicalTopics) => {
+  if (!canonicalTopics) return null
+  const { topicNeedsReview } = normalizeTopic(topic, canonicalTopics)
+  return topicNeedsReview ? 0.3 : 1
+}
+
 // ── Step 2: Score one topic ────────────────────────────────────
-const scoreOneTopic = (topic, questions, subject, allTopics) => {
+const scoreOneTopic = (topic, questions, subject, allTopics, canonicalTopics, freqTrust) => {
   const years     = [...new Set(questions.map(q => q.year))].sort()
   const latestYear = Math.max(...years)
   const weights   = SUBJECT_WEIGHTS[subject] || SUBJECT_WEIGHTS.default
@@ -106,15 +145,36 @@ const scoreOneTopic = (topic, questions, subject, allTopics) => {
                         : avgDifficulty < 2.5 ? 'decreasing' : 'stable'
 
   // ── Weighted raw score (0–1 scale) ──────────────────────────
-  // Syllabus signal uses frequency as a proxy until real syllabus
-  // data is loaded — once you have syllabus documents this can be
-  // replaced with actual curriculum prominence values.
-  const syllabusProxy = frequencyScore
+  // Syllabus signal uses the real NaCCA topic taxonomy where one
+  // exists (BECE only — see canonicalTopics in analyseTopics), falling
+  // back to frequency as a proxy for every other subject/exam type.
+  const realSignal   = computeSyllabusSignal(topic, canonicalTopics)
+  const syllabusProxy = realSignal ?? frequencyScore
+
+  // When a real syllabus signal is available but the same-curriculum
+  // sample is still thin (freqTrust < 1), redistribute weight from
+  // frequency/recency/gap onto syllabus in proportion to the trust
+  // deficit — a topic seen in only 1 post-reform year leans almost
+  // entirely on "is this actually in the current curriculum" rather
+  // than a frequency count that's structurally low just for lack of
+  // years. As more years accumulate, freqTrust → 1 and this converges
+  // back to the subject's normal weights automatically.
+  let effectiveWeights = weights
+  if (realSignal !== null && freqTrust < 1) {
+    const deficit = (1 - freqTrust) * (weights.frequency + weights.recency + weights.gap)
+    effectiveWeights = {
+      frequency: weights.frequency * freqTrust,
+      recency:   weights.recency   * freqTrust,
+      gap:       weights.gap       * freqTrust,
+      syllabus:  weights.syllabus + deficit,
+    }
+  }
+
   const rawScore =
-    (frequencyScore * weights.frequency) +
-    (recencyScore   * weights.recency)   +
-    (gapScore       * weights.gap)       +
-    (syllabusProxy  * weights.syllabus)
+    (frequencyScore * effectiveWeights.frequency) +
+    (recencyScore   * effectiveWeights.recency)   +
+    (gapScore       * effectiveWeights.gap)       +
+    (syllabusProxy  * effectiveWeights.syllabus)
 
   // Trend direction boosts or penalises the raw score slightly
   const trendBoost = trendDirection * 0.05
